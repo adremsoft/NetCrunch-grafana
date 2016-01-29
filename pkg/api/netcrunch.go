@@ -25,5 +25,5 @@ func ProxyNetCrunchServerRequest(c *middleware.Context) {
   proxyPath := c.Params("*")
   proxy := NewReverseProxy(&datasource, proxyPath, url)
   proxy.Transport = dataProxyTransport
-  proxy.ServeHTTP(c.RW(), c.Req.Request)
+  proxy.ServeHTTP(c.Resp, c.Req.Request)
 }
