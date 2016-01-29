@@ -54,10 +54,15 @@ export class SideMenuCtrl {
        text: "Preferences",
        url: this.getUrl("/org"),
      });
+
+// This functionality is useless for GrafCrunch
+/*
      this.orgMenu.push({
        text: "Users",
        url: this.getUrl("/org/users"),
      });
+*/
+
      this.orgMenu.push({
        text: "API Keys",
        url: this.getUrl("/org/apikeys"),
@@ -67,7 +72,7 @@ export class SideMenuCtrl {
    this.orgMenu.push({cssClass: "divider"});
 
    if (this.contextSrv.isGrafanaAdmin) {
-     this.orgMenu.push({text: "Grafana adminstration", icon: "fa fa-fw fa-cogs", url: this.getUrl("/admin/settings")});
+     this.orgMenu.push({text: "GrafCrunch administration", icon: "fa fa-fw fa-cogs", url: this.getUrl("/admin/settings")});
    }
 
    this.backendSrv.get('/api/user/orgs').then(orgs => {
@@ -108,7 +113,7 @@ export class SideMenuCtrl {
    });
 
    this.mainLinks.push({
-     text: "Grafana stats",
+     text: "Stats",
      icon: "fa fa-fw fa-bar-chart",
      url: this.getUrl("/admin/stats"),
    });
