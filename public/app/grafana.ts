@@ -61,7 +61,7 @@ export class GrafanaApp {
       'ui.bootstrap.tpls',
     ];
 
-    var module_types = ['controllers', 'directives', 'factories', 'services', 'filters', 'routes'];
+    var module_types = ['controllers', 'directives', 'factories', 'services', 'filters', 'routes', 'const', 'values'];
 
     _.each(module_types, type => {
       var moduleName = 'grafana.' + type;
@@ -71,7 +71,10 @@ export class GrafanaApp {
     // makes it possible to add dynamic stuff
     this.useModule(coreModule);
 
-    var preBootRequires = [System.import('app/features/all')];
+    var preBootRequires = [
+      System.import('app/consts/all'),
+      System.import('app/features/all')
+    ];
     var pluginModules = config.bootData.pluginModules || [];
 
     // add plugin modules

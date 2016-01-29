@@ -6,6 +6,10 @@ System.config({
     "jquery": "vendor/jquery/dist/jquery.js",
     'lodash-src': 'vendor/lodash.js',
     "lodash": 'app/core/lodash_extended.js',
+    client: 'vendor/adrem/client.min',
+    ObjMapper: 'vendor/adrem/ObjMapper.min',
+    NCObjects: 'vendor/adrem/NCObjects.min',
+    remoteDataLists: 'vendor/adrem/RemoteDataLists.min',
     "angular": "vendor/angular/angular.js",
     "bootstrap": "vendor/bootstrap/bootstrap.js",
     'angular-route':          'vendor/angular-route/angular-route.js',
@@ -49,7 +53,21 @@ System.config({
     'vendor/angular/angular.js': {
       format: 'global',
       deps: ['jquery'],
-      exports: 'angular',
+      exports: 'angular'
     },
+
+    // Adrem Software dependency declaration
+    'vendor/adrem/ObjMapper.min': {
+      format: 'global',
+      deps: ['client']
+    },
+    'vendor/adrem/NCObjects.min': {
+      format: 'global',
+      deps: ['ObjMapper']
+    },
+    'vendor/adrem/RemoteDataLists.min': {
+      format: 'global',
+      deps: ['client']
+    }
   }
 });
