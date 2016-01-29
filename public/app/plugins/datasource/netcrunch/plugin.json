@@ -1,15 +1,7 @@
 {
-  "pluginType": "datasource",
+  "type": "datasource",
   "name": "NetCrunch",
-
-  "type": "netcrunch",
-  "serviceName": "NetCrunchDatasource",
-
-  "module": "app/plugins/datasource/netcrunch/datasource",
-
-  "partials": {
-    "config": "app/plugins/datasource/netcrunch/partials/config.html"
-  },
+  "id": "netcrunch",
 
   "metrics": true,
   "annotations": false

@@ -1,6 +1,6 @@
 /***************************************************************
  *
- * Author   : boguslaw.gorczyca
+ * Author   : boguslaw.gorczyca (boguslaw@gorczyca.name)
  * Created  : 2015-08-20
  *
  * 2015 Copyright AdRem Software, all rights reserved
@@ -25,51 +25,38 @@ function (angular, _, moment) {
 
   'use strict';
 
-  var module = angular.module('grafana.services');
+  var THREAD_WORKER_NODES_NUMBER = 1000,
+      RAW_DATA_MAX_RANGE = {
+        periodInterval: 2,
+        periodType: 'days'
+      },
+      RAW_TIME_RANGE_EXCEEDED_WARNING_TITLE = 'Time range is too long.',
+      RAW_TIME_RANGE_EXCEEDED_WARNING_TEXT = 'Maximum allowed length of time range for RAW data is '
+                                             + RAW_DATA_MAX_RANGE.periodInterval + ' ' +
+                                             RAW_DATA_MAX_RANGE.periodType + '.',
+      TEMPLATES_NOT_SUPPORTED_INFO = 'NetCrunch datasource doesn\'t support templates.',
+      SERIES_TYPES_DISPLAY_NAMES = {
+        min: 'Min',
+        avg: 'Avg',
+        max: 'Max',
+        avail: 'Avail',
+        delta: 'Delta',
+        equal: 'Equal',
+        distr: 'Distr'
+      };
 
-  module.factory('NetCrunchDatasource', function($q, $rootScope, alertSrv, netCrunchConnectionProvider,
-                                                 netCrunchConnectionProviderConsts, netCrunchTrendDataProviderConsts,
-                                                 netCrunchOrderNodesFilter, netCrunchMapNodesFilter,
-                                                 netCrunchNodesFilter, processingDataWorker) {
+  function QueryCache(datasource) {
 
-    var THREAD_WORKER_NODES_NUMBER = 1000,
-        RAW_DATA_MAX_RANGE = {
-          periodInterval : 2,
-          periodType : 'days'
-        },
-        RAW_TIME_RANGE_EXCEEDED_WARNING_TITLE = 'Time range is too long.',
-        RAW_TIME_RANGE_EXCEEDED_WARNING_TEXT = 'Maximum allowed length of time range for RAW data is '
-                                               + RAW_DATA_MAX_RANGE.periodInterval + ' ' +
-                                                 RAW_DATA_MAX_RANGE.periodType + '.',
-        TEMPLATES_NOT_SUPPORTED_INFO = 'NetCrunch datasource doesn\'t support templates.',
-        SERIES_TYPES_DISPLAY_NAMES = {
-          min : 'Min',
-          avg : 'Avg',
-          max : 'Max',
-          avail : 'Avail',
-          delta : 'Delta',
-          equal : 'Equal',
-          distr : 'Distr'
-        },
-        PERIODS = Object.create(null),
-        CONNECTION_ERROR_MESSAGES = netCrunchConnectionProviderConsts.ERROR_MESSAGES;
+    this.datasource = datasource;
 
-    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpMinutes] = 'minutes';
-    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpHours] = 'hours';
-    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpDays] = 'days';
-    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpMonths] = 'months';
-
-    function QueryCache(datasource) {
-      this.datasource = datasource;
-      if (datasource.netCrunchConnection != null) {
-        this.cache = datasource.netCrunchConnection.cache;
-      } else {
-        this.cache = Object.create(null);
-        this.cache.counters = Object.create(null);
-      }
+    if (datasource.netCrunchConnection != null) {
+      this.cache = datasource.netCrunchConnection.cache;
+    } else {
+      this.cache = Object.create(null);
+      this.cache.counters = Object.create(null);
     }
 
-    QueryCache.prototype.getCounters = function (nodeId) {
+    this.getCounters = function(nodeId) {
       var countersCache = this.cache.counters,
           cachedNodeCounters = countersCache[nodeId],
           countersQuery;
@@ -85,27 +72,41 @@ function (angular, _, moment) {
         return countersQuery;
       }
     };
+  }
 
-    function NetCrunchDatasource(datasource) {
+  function NetCrunchDatasource(instanceSettings, $q, $rootScope, alertSrv, netCrunchConnectionProvider,
+                               netCrunchConnectionProviderConsts, netCrunchTrendDataProviderConsts,
+                               netCrunchOrderNodesFilter, netCrunchMapNodesFilter, netCrunchNodesFilter,
+                               processingDataWorker) {
 
-      var initTask = $q.defer(),
-          nodesReady = $q.defer(),
-          networkAtlasReady = $q.defer(),
-          netCrunchLogin,
-          self = this;
+    var PERIODS = Object.create(null),
+        CONNECTION_ERROR_MESSAGES = netCrunchConnectionProviderConsts.ERROR_MESSAGES;
 
-      this.datasource = datasource;
-      this.id = datasource.id;
-      this.name = datasource.name;
-      this.url = datasource.url;
-      this.username = datasource.username;
-      this.password = datasource.password;
-      this.netCrunchConnection = Object.create(null);
-      this.ready = initTask.promise;
-      this.nodes = nodesReady.promise;
-      this.networkAtlas = networkAtlasReady.promise;
-      this.cache = this.createQueryCache();
-      this.instanceId = (new Date()).getTime();
+    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpMinutes] = 'minutes';
+    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpHours] = 'hours';
+    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpDays] = 'days';
+    PERIODS[netCrunchTrendDataProviderConsts.PERIOD_TYPE.tpMonths] = 'months';
+
+    var initTask = $q.defer(),
+        nodesReady = $q.defer(),
+        networkAtlasReady = $q.defer(),
+        netCrunchLogin,
+        self = this;
+
+    this.datasource = instanceSettings;
+    this.id = instanceSettings.id;
+    this.name = instanceSettings.name;
+    this.url = instanceSettings.url;
+    this.username = instanceSettings.username;
+    this.password = instanceSettings.password;
+    this.netCrunchConnection = Object.create(null);
+    this.ready = initTask.promise;
+    this.nodes = nodesReady.promise;
+    this.networkAtlas = networkAtlasReady.promise;
+    this.cache = this.createQueryCache();
+    this.instanceId = (new Date()).getTime();
+
+    this.constructor = function() {
 
       function initUpdateNodes(networkAtlas) {
         $rootScope.$on('netcrunch-host-data-changed(' + self.url + ')', function() {
@@ -129,8 +130,8 @@ function (angular, _, moment) {
         });
       }
 
-      if (datasource.url != null) {
-        netCrunchLogin = netCrunchConnectionProvider.getConnection(datasource);
+      if (self.url != null) {
+        netCrunchLogin = netCrunchConnectionProvider.getConnection(self.datasource);
         netCrunchLogin.then(
           function(connection) {
             self.netCrunchConnection = connection;
@@ -140,41 +141,39 @@ function (angular, _, moment) {
             initTask.resolve();
           },
           function(error) {
-            alertSrv.set(datasource.name, CONNECTION_ERROR_MESSAGES[error], 'error');
+            alertSrv.set(self.name, CONNECTION_ERROR_MESSAGES[error], 'error');
             console.log('');
             console.log('NetCrunch datasource');
-            console.log(datasource.name + ': ' + CONNECTION_ERROR_MESSAGES[error]);
+            console.log(self.name + ': ' + CONNECTION_ERROR_MESSAGES[error]);
             initTask.reject();
           }
         );
       } else {
         initTask.reject();
       }
-    }
-
-    NetCrunchDatasource.prototype.createQueryCache = function() {
-      return new QueryCache(this);
     };
 
-    NetCrunchDatasource.prototype.testDatasource = function() {
+    this.testDatasource = function() {
       var testResult = $q.defer();
 
       //TODO: reimplement this code
 
-      testResult.resolve({ status: "info", message: "This feature is not supported for NetCrunch datasource",
-                           title: "Information" });
+      testResult.resolve({
+        status: "info",
+        message: "This feature is not supported for NetCrunch datasource",
+        title: "Information"
+      });
       return testResult.promise;
     };
 
-    NetCrunchDatasource.prototype.getNodeById = function (nodeID) {
+    this.getNodeById = function(nodeID) {
       return this.nodes.then(function(nodes) {
         return nodes.nodesMap[nodeID];
       });
     };
 
-    NetCrunchDatasource.prototype.getCounters = function (nodeId) {
-      var
-        countersApi = this.netCrunchConnection.counters;
+    this.getCounters = function(nodeId) {
+      var countersApi = this.netCrunchConnection.counters;
 
       return this.ready.then(function() {
         return countersApi.getCounters(nodeId).then(function(counters) {
@@ -195,11 +194,11 @@ function (angular, _, moment) {
       });
     };
 
-    NetCrunchDatasource.prototype.getCountersFromCache = function(nodeId) {
+    this.getCountersFromCache = function(nodeId) {
       return this.cache.getCounters(nodeId);
     };
 
-    NetCrunchDatasource.prototype.findCounterByName = function(counters, counterName) {
+    this.findCounterByName = function(counters, counterName) {
       var existingCounter = null;
 
       counters.table.some(function(counter) {
@@ -214,10 +213,9 @@ function (angular, _, moment) {
       return existingCounter;
     };
 
-    NetCrunchDatasource.prototype.filterNodeList = function(nodes, pattern) {
-
+    this.filterNodeList = function(nodes, pattern) {
       var newNodeList = [],
-        result = $q.when(newNodeList);
+          result = $q.when(newNodeList);
 
       function orderNodeList(nodes) {
         if (nodes != null) {
@@ -243,7 +241,7 @@ function (angular, _, moment) {
       return result;
     };
 
-    NetCrunchDatasource.prototype.updateNodeList = function(nodes) {
+    this.updateNodeList = function(nodes) {
       return this.filterNodeList(nodes, '').then(function(updated) {
         updated.nodesMap = Object.create(null);
         updated.forEach(function(node) {
@@ -253,7 +251,7 @@ function (angular, _, moment) {
       });
     };
 
-    NetCrunchDatasource.prototype.validateSeriesTypes = function(series) {
+    this.validateSeriesTypes = function(series) {
       series.min = (series.min == null) ? false : series.min;
       series.avg = (series.avg == null) ? true : series.avg;
       series.max = (series.max == null) ? false : series.max;
@@ -264,13 +262,13 @@ function (angular, _, moment) {
       return series;
     };
 
-    NetCrunchDatasource.prototype.seriesTypesSelected = function(series) {
+    this.seriesTypesSelected = function(series) {
       return Object.keys(series).some(function(seriesKey) {
         return (series[seriesKey] === true);
       });
     };
 
-    NetCrunchDatasource.prototype.updatePanel = function(panel) {
+    this.updatePanel = function(panel) {
       var MAX_SAMPLE_COUNT = netCrunchTrendDataProviderConsts.DEFAULT_MAX_SAMPLE_COUNT,
           scopedVars = (panel.scopedVars == null) ? Object.create(null) : panel.scopedVars,
           rawData = (scopedVars.rawData == null) ? false : scopedVars.rawData,
@@ -284,7 +282,7 @@ function (angular, _, moment) {
       return panel;
     };
 
-    NetCrunchDatasource.prototype.query = function(options) {
+    this.query = function(options) {
       var self = this;
 
       function floorTime(time, period) {
@@ -292,27 +290,27 @@ function (angular, _, moment) {
             minuteRemains,
             floorMethod = Object.create(null);
 
-        floorMethod['minutes'] = function (time) {
+        floorMethod['minutes'] = function(time) {
           minuteRemains = time.minute() % MINUTES_SLOT;
           return time.subtract(minuteRemains, 'minutes');
         };
 
-        floorMethod['hours'] = function (time) {
+        floorMethod['hours'] = function(time) {
           return time.startOf('hour');
         };
 
-        floorMethod['days'] = function (time) {
+        floorMethod['days'] = function(time) {
           return time.startOf('day');
         };
 
-        floorMethod['months'] = function (time) {
+        floorMethod['months'] = function(time) {
           return time.startOf('month');
         };
 
         return floorMethod[period](time).startOf('minute');
       }
 
-      function addMarginsToTimeRange (rangeFrom, rangeTo, period) {
+      function addMarginsToTimeRange(rangeFrom, rangeTo, period) {
 
         rangeFrom = moment(rangeFrom).subtract(period.periodInterval, PERIODS[period.periodType]);
         rangeTo = moment(rangeTo).add(period.periodInterval, PERIODS[period.periodType]);
@@ -322,10 +320,10 @@ function (angular, _, moment) {
         }
 
         return {
-          from : floorTime(rangeFrom, PERIODS[period.periodType]),
-          to : rangeTo,
-          periodInterval : period.periodInterval,
-          periodType : period.periodType
+          from: floorTime(rangeFrom, PERIODS[period.periodType]),
+          to: rangeTo,
+          periodInterval: period.periodInterval,
+          periodType: period.periodType
         };
       }
 
@@ -338,13 +336,13 @@ function (angular, _, moment) {
       function calculateRAWTimeRange(rangeFrom, rangeTo) {
         var trends = self.netCrunchConnection.trends,
             period = {
-              periodInterval : 1,
-              periodType : trends.PERIOD_TYPE.tpMinutes
+              periodInterval: 1,
+              periodType: trends.PERIOD_TYPE.tpMinutes
             };
         return addMarginsToTimeRange(rangeFrom, rangeTo, period);
       }
 
-      function calculateMaxDataPoints (setMaxDataPoints, maxDataPoints) {
+      function calculateMaxDataPoints(setMaxDataPoints, maxDataPoints) {
         var maxDataPointsInt,
             minMaxDataPoints = netCrunchTrendDataProviderConsts.DEFAULT_MIN_MAX_SAMPLE_COUNT,
             maxMaxDataPoints = netCrunchTrendDataProviderConsts.DEFAULT_MAX_MAX_SAMPLE_COUNT,
@@ -364,16 +362,14 @@ function (angular, _, moment) {
         return result;
       }
 
-      function prepareTimeRange (rangeFrom, rangeTo, rawData, maxDataPoints) {
+      function prepareTimeRange(rangeFrom, rangeTo, rawData, maxDataPoints) {
         var range = null;
 
         if (rawData === true) {
-          if (moment(rangeTo).subtract(RAW_DATA_MAX_RANGE.periodInterval,
-                                       RAW_DATA_MAX_RANGE.periodType) <= rangeFrom) {
+          if (moment(rangeTo).subtract(RAW_DATA_MAX_RANGE.periodInterval, RAW_DATA_MAX_RANGE.periodType) <= rangeFrom) {
             range = calculateRAWTimeRange(rangeFrom, rangeTo);
           } else {
-            alertSrv.set(RAW_TIME_RANGE_EXCEEDED_WARNING_TITLE,
-                         RAW_TIME_RANGE_EXCEEDED_WARNING_TEXT, 'warning');
+            alertSrv.set(RAW_TIME_RANGE_EXCEEDED_WARNING_TITLE, RAW_TIME_RANGE_EXCEEDED_WARNING_TEXT, 'warning');
           }
         } else {
           range = calculateTimeRange(rangeFrom, rangeTo, maxDataPoints);
@@ -404,14 +400,14 @@ function (angular, _, moment) {
             return null;
           } else {
             return {
-              nodeName : nodeName,
-              counterDisplayName : counterDisplayName
+              nodeName: nodeName,
+              counterDisplayName: counterDisplayName
             };
           }
         });
       }
 
-      function prepareSeriesDataQuery (target, range, series){
+      function prepareSeriesDataQuery(target, range, series) {
         var trends = self.netCrunchConnection.trends;
 
         if (self.seriesTypesSelected(series) === false) {
@@ -419,8 +415,8 @@ function (angular, _, moment) {
         }
 
         return trends.getCounterTrendData(target.nodeID, target.counterName, range.from, range.to, range.periodType,
-                                          range.periodInterval, series)
-          .then(function (dataPoints) {
+                                          range.periodInterval, series).then(
+          function(dataPoints) {
             var seriesData = [];
 
             Object.keys(dataPoints.values).forEach(function(seriesType) {
@@ -437,7 +433,7 @@ function (angular, _, moment) {
           });
       }
 
-      function prepareTargetQuery (target, range, series) {
+      function prepareTargetQuery(target, range, series) {
         var targetDataQuery = null;
 
         if ((target.hide !== true) && (target.counterDataComplete === true)) {
@@ -463,9 +459,8 @@ function (angular, _, moment) {
       }
 
       function prepareChartData(targetsChartData, rawData) {
-        var
-          counterSeries = Object.create(null),
-          trends = self.netCrunchConnection.trends;
+        var counterSeries = Object.create(null),
+            trends = self.netCrunchConnection.trends;
 
         function extendCounterName(baseCounterName, seriesType) {
           return baseCounterName + '\\' + SERIES_TYPES_DISPLAY_NAMES[seriesType];
@@ -484,7 +479,7 @@ function (angular, _, moment) {
               targetSeries.forEach(function(serie) {
                 if (extendedNamesCounters === true) {
                   counterName = extendCounterName(baseCounterName, serie.seriesType);
-                }  else {
+                } else {
                   counterName = baseCounterName;
                 }
                 counterSeries.data.push({
@@ -500,52 +495,58 @@ function (angular, _, moment) {
       }
 
       try {
-        return this.ready.then(function() {
-          var targets = options.targets || [],
-              scopedVars = (options.scopedVars == null) ? {} : options.scopedVars,
-              rawData = (scopedVars.rawData == null) ? false : scopedVars.rawData,
-              setMaxDataPoints = (scopedVars.setMaxDataPoints == null) ? false :
-                                  scopedVars.setMaxDataPoints,
-              maxDataPoints = (scopedVars.maxDataPoints == null) ?
-                               netCrunchTrendDataProviderConsts.DEFAULT_MAX_SAMPLE_COUNT :
-                               scopedVars.maxDataPoints,
-              rangeFrom = options.range.from.startOf('minute'),
-              rangeTo = options.range.to.startOf('minute'),
-              rangeMaxDataPoints = calculateMaxDataPoints(setMaxDataPoints, maxDataPoints),
-              range = prepareTimeRange(rangeFrom, rangeTo, rawData, rangeMaxDataPoints),
-              dataQueries = [];
+        return this.ready.then(
+          function() {
+            var targets = options.targets || [],
+                scopedVars = (options.scopedVars == null) ? {} : options.scopedVars,
+                rawData = (scopedVars.rawData == null) ? false : scopedVars.rawData,
+                setMaxDataPoints = (scopedVars.setMaxDataPoints == null) ? false : scopedVars.setMaxDataPoints,
+                maxDataPoints = (scopedVars.maxDataPoints == null) ?
+                                 netCrunchTrendDataProviderConsts.DEFAULT_MAX_SAMPLE_COUNT : scopedVars.maxDataPoints,
+                rangeFrom = options.range.from.startOf('minute'),
+                rangeTo = options.range.to.startOf('minute'),
+                rangeMaxDataPoints = calculateMaxDataPoints(setMaxDataPoints, maxDataPoints),
+                range = prepareTimeRange(rangeFrom, rangeTo, rawData, rangeMaxDataPoints),
+                dataQueries = [];
 
-          if (range != null) {
-            targets.forEach(function(target) {
-              var targetDataQuery,
-                  series = (rawData === true) ? {avg : true} : target.series;
+            if (range != null) {
+              targets.forEach(function(target) {
+                var targetDataQuery,
+                    series = (rawData === true) ? { avg: true } : target.series;
 
-              targetDataQuery = prepareTargetQuery(target, range, series);
-              if (targetDataQuery != null) {
-                dataQueries.push(targetDataQuery);
-              }
+                targetDataQuery = prepareTargetQuery(target, range, series);
+                if (targetDataQuery != null) {
+                  dataQueries.push(targetDataQuery);
+                }
+              });
+            }
+
+            return $q.all(dataQueries).then(function(targetsChartData) {
+              return prepareChartData(targetsChartData, rawData);
             });
+          },
+          function() {
+            return $q.when(false);
           }
-
-          return $q.all(dataQueries).then(function(targetsChartData) {
-            return prepareChartData(targetsChartData, rawData);
-          });
-
-        }, function() {
-          return $q.when(false);
-        });
+        );
       }
 
-      catch(error) {
+      catch (error) {
         return $q.reject(error);
       }
     };
 
-    NetCrunchDatasource.prototype.metricFindQuery = function() {
+    this.metricFindQuery = function() {
       alertSrv.set(TEMPLATES_NOT_SUPPORTED_INFO);
       return $q.when([]);
     };
 
-    return NetCrunchDatasource;
-  });
+    this.constructor();
+  }
+
+  NetCrunchDatasource.prototype.createQueryCache = function() {
+    return new QueryCache(this);
+  };
+
+  return NetCrunchDatasource;
 });
