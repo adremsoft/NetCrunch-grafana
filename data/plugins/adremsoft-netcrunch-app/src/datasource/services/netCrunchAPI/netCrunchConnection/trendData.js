@@ -15,14 +15,14 @@ const NETCRUNCH_TREND_DATA_CONST = {
   MAX_SAMPLE_COUNT: {
     MIN: 10,
     DEFAULT: 200,
-    MAX: 5000
+    MAX: 5000,
   },
 
   PERIOD_TYPE: {
     tpMinutes: 0,
     tpHours: 1,
     tpDays: 2,
-    tpMonths: 3
+    tpMonths: 3,
   },
 
   QUERY_RESULT_MASKS: {
@@ -32,11 +32,15 @@ const NETCRUNCH_TREND_DATA_CONST = {
     avail: 'tqrAvail',
     delta: 'tqrDelta',
     equal: 'tqrEqual',
-    distr: 'tqrDistr'
+    distr: 'tqrDistr',
   },
 
-  QUERY_RESULT_ORDER: ['avg', 'min', 'max', 'avail', 'delta', 'equal']
+  QUERY_RESULT_ORDER: ['avg', 'min', 'max', 'avail', 'delta', 'equal'],
 };
+
+function asArray(data) {
+  return Array.isArray(data) ? data : [data];
+}
 
 function NetCrunchTrendData(netCrunchConnection) {
   const
@@ -45,14 +49,14 @@ function NetCrunchTrendData(netCrunchConnection) {
       [PERIOD_TYPE.tpMinutes]: 'minutes',
       [PERIOD_TYPE.tpHours]: 'hours',
       [PERIOD_TYPE.tpDays]: 'days',
-      [PERIOD_TYPE.tpMonths]: 'months'
+      [PERIOD_TYPE.tpMonths]: 'months',
     },
     QUERY_RESULT_MASKS = NETCRUNCH_TREND_DATA_CONST.QUERY_RESULT_MASKS,
     QUERY_RESULT_ORDER = NETCRUNCH_TREND_DATA_CONST.QUERY_RESULT_ORDER,
     MAX_SAMPLE_COUNT = NETCRUNCH_TREND_DATA_CONST.MAX_SAMPLE_COUNT,
     RAW_DATA_MAX_RANGE = {
       periodInterval: 2,
-      periodName: PERIOD_NAMES[PERIOD_TYPE.tpDays]
+      periodName: PERIOD_NAMES[PERIOD_TYPE.tpDays],
     };
 
   function convertPeriodTypeToName(periodType) {
@@ -65,7 +69,7 @@ function NetCrunchTrendData(netCrunchConnection) {
     if (maxDataPoints != null) {
       const maxDataPointsInt = parseInt(maxDataPoints, 10);
       if ((!isNaN(maxDataPoints)) &&
-          (maxDataPoints >= MAX_SAMPLE_COUNT.MIN) && (maxDataPoints <= MAX_SAMPLE_COUNT.MAX)) {
+        (maxDataPoints >= MAX_SAMPLE_COUNT.MIN) && (maxDataPoints <= MAX_SAMPLE_COUNT.MAX)) {
         result = maxDataPointsInt;
       }
     }
@@ -110,7 +114,7 @@ function NetCrunchTrendData(netCrunchConnection) {
       to: rangeTo,
       periodInterval: period.periodInterval,
       periodType: period.periodType,
-      periodName: period.periodName
+      periodName: period.periodName,
     };
   }
 
@@ -118,7 +122,7 @@ function NetCrunchTrendData(netCrunchConnection) {
     const period = {
       periodType: PERIOD_TYPE.tpMinutes,
       periodName: convertPeriodTypeToName(PERIOD_TYPE.tpMinutes),
-      periodInterval: 1
+      periodInterval: 1,
     };
     return addMarginsToTimeRange(rangeFrom, rangeTo, period);
   }
@@ -154,7 +158,7 @@ function NetCrunchTrendData(netCrunchConnection) {
         { length: 15 * month, type: PERIOD_TYPE.tpMonths, interval: 15 },
         { length: 18 * month, type: PERIOD_TYPE.tpMonths, interval: 18 },
         { length: 21 * month, type: PERIOD_TYPE.tpMonths, interval: 21 },
-        { length: 24 * month, type: PERIOD_TYPE.tpMonths, interval: 24 }
+        { length: 24 * month, type: PERIOD_TYPE.tpMonths, interval: 24 },
       ];
 
     let periodIndex = 0;
@@ -170,7 +174,7 @@ function NetCrunchTrendData(netCrunchConnection) {
     return {
       periodType: periods[periodIndex].type,
       periodName: convertPeriodTypeToName(periods[periodIndex].type),
-      periodInterval: periods[periodIndex].interval
+      periodInterval: periods[periodIndex].interval,
     };
   }
 
@@ -210,7 +214,7 @@ function NetCrunchTrendData(netCrunchConnection) {
     const convertedData = Object.create(null);
     let resultSeries;
 
-    resultType = resultType.ResultMask[0];
+    resultType = resultType.ResultMask;
     // eslint-disable-next-line
     resultSeries = QUERY_RESULT_ORDER.filter(seriesType => (resultType.indexOf(QUERY_RESULT_MASKS[seriesType]) >= 0));
     resultSeries.forEach((seriesName) => {
@@ -218,13 +222,9 @@ function NetCrunchTrendData(netCrunchConnection) {
     });
 
     result.trend.forEach((data) => {
-      if (Array.isArray(data) === true) {
-        data.forEach((value, $index) => {
-          convertedData[resultSeries[$index]].push(value);
-        });
-      } else {
-        convertedData[resultSeries[0]].push(data);
-      }
+      asArray(data).forEach((value, $index) => {
+        convertedData[resultSeries[$index]].push(value);
+      });
     });
 
     if (result.distr != null) {
@@ -241,19 +241,19 @@ function NetCrunchTrendData(netCrunchConnection) {
     if (rawData === true) {
       if (moment(rangeTo).subtract(RAW_DATA_MAX_RANGE.periodInterval, RAW_DATA_MAX_RANGE.periodName) <= rangeFrom) {
         range = {
-          result: calculateRAWTimeRange(rangeFrom, rangeTo)
+          result: calculateRAWTimeRange(rangeFrom, rangeTo),
         };
       } else {
         range = {
           error: {
             periodInterval: RAW_DATA_MAX_RANGE.periodInterval,
-            periodName: RAW_DATA_MAX_RANGE.periodName
-          }
+            periodName: RAW_DATA_MAX_RANGE.periodName,
+          },
         };
       }
     } else {
       range = {
-        result: calculateTimeRange(rangeFrom, rangeTo, maxDataPoints)
+        result: calculateTimeRange(rangeFrom, rangeTo, maxDataPoints),
       };
     }
 
@@ -261,7 +261,7 @@ function NetCrunchTrendData(netCrunchConnection) {
   }
 
   function getCounterTrendData(nodeID, counter, dateFrom, dateTo, periodType = PERIOD_TYPE.tpHours,
-                               periodInterval = 1, resultType) {      // eslint-disable-line
+                               periodInterval = 1, resultType = null) {      // eslint-disable-line
 
     // resultType possible values are:
     //    [ tqrAvg, tqrMin, tqrMax, tqrAvail, tqrDelta, tqrEqual, tqrDistr ]
@@ -272,20 +272,21 @@ function NetCrunchTrendData(netCrunchConnection) {
     }
 
     resultType = (resultType == null) ? prepareResultMask({ avg: true }) : prepareResultMask(resultType);
-    if (resultType.ResultMask[0].length === 0) {
+    if (resultType.ResultMask.length === 0) {
       resultType = prepareResultMask({ avg: true });
     }
 
-    return netCrunchConnection.queryTrendData(nodeID.toString(), counter, periodType, periodInterval,
-                                              dateFrom, dateTo,
-                                              resultType,
-                                              null, // day mask just no mask
-                                              null, // value for equal checking
-                                              null)
+    return netCrunchConnection
+      .queryTrendData(nodeID.toString(), counter, periodType, periodInterval,
+                      dateFrom, dateTo,
+                      resultType,
+                      null, // day mask just no mask
+                      null, // value for equal checking
+                      null)
       .then((data) => {       // eslint-disable-line
         return {
           domain: calculateTimeDomain(dateFrom, periodType, periodInterval, data.trend.length),
-          values: convertResultData(data, resultType)
+          values: convertResultData(data, resultType),
         };
       });
   }
@@ -302,8 +303,7 @@ function NetCrunchTrendData(netCrunchConnection) {
     period = period || calculateChartDataInterval(dateStart, dateEnd, maxSampleCount);
 
     result.period = period;
-    result.data = getCounterTrendData(nodeID, counterName, dateStart, dateEnd, period.periodType,
-                                      period.periodInterval, resultType);
+    result.data = getCounterTrendData(nodeID, counterName, dateStart, dateEnd, period.periodType,  period.periodInterval, resultType);
     return result;
   }
 
@@ -317,11 +317,11 @@ function NetCrunchTrendData(netCrunchConnection) {
     getCounterTrendData,
     getCounterTrendRAWData,
     getCounterData,
-    grafanaDataConverter
+    grafanaDataConverter,
   };
 }
 
 export {
   NETCRUNCH_TREND_DATA_CONST,
-  NetCrunchTrendData
+  NetCrunchTrendData,
 };
