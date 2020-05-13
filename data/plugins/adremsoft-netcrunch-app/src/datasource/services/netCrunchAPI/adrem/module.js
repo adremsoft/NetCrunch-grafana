@@ -16,14 +16,12 @@ import { AdremWebWorker } from './adremWebWorker';
 const
   adremModuleUrl = `${systemJSDatasourceURL}services/netCrunchAPI/adrem/`,
   adremClient = `${adremModuleUrl}client.min.js`,
-  objectMapper = `${adremModuleUrl}ObjMapper.min.js`,
   remoteDataLists = `${adremModuleUrl}RemoteDataLists.min.js`;
 
 function importAdremClient() {
   return SystemJS.import(adremClient)
     .then(adrem =>
       SystemJS.import(remoteDataLists)
-        .then(() => SystemJS.import(objectMapper))
         .then(() => adrem)
     );
 }
