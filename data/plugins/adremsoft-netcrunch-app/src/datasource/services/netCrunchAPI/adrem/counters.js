@@ -59,7 +59,6 @@ const
 
 function NetCrunchCounters(adremClient, netCrunchConnection) {
 
-  let snmpMibData = null;
   const
     shortOidPathsCache = Object.create(null),
     fullOidPathsCache = Object.create(null),
@@ -78,7 +77,7 @@ function NetCrunchCounters(adremClient, netCrunchConnection) {
 
   function isMIBCnt(obj, cnt) {
     return (((isOid(obj) === true) && ((cnt === '') || (isOid(cnt) === true))) ||
-            ((obj === '') && (isOid(cnt) === true)));
+      ((obj === '') && (isOid(cnt) === true)));
   }
 
   function counterPathObject(counter, counterType) {
@@ -273,7 +272,7 @@ function NetCrunchCounters(adremClient, netCrunchConnection) {
       }
 
       if (updateOidPath === true) {
-        getOidFunc({ oid }, (oidPath) => {
+        getOidFunc(oid, (oidPath) => {
           oidCache[oid] = oidPath;
           resolve(oidPath);
         });
@@ -283,20 +282,13 @@ function NetCrunchCounters(adremClient, netCrunchConnection) {
     });
   }
 
-  function initSnmpMibData() {
-    if (snmpMibData == null) {
-      snmpMibData = new adremClient.NetCrunch.SnmpMibData('ncSrv', () => {}, netCrunchConnection);
-    }
-  }
 
   function getShortOidPath(oid) {
-    initSnmpMibData();
-    return getOidPath(oid, shortOidPathsCache, snmpMibData.getShortOidPath);
+    return getOidPath(oid, shortOidPathsCache, netCrunchConnection.ncSrv.IRemoteSNMPMIBData.GetShortOIDPath);
   }
 
   function getFullOidPath(oid) {
-    initSnmpMibData();
-    return getOidPath(oid, fullOidPathsCache, snmpMibData.getFullOidPath);
+    return getOidPath(oid, fullOidPathsCache, netCrunchConnection.ncSrv.IRemoteSNMPMIBData.GetFullOIDPath);
   }
 
   function decodePath(path) {
@@ -336,19 +328,19 @@ function NetCrunchCounters(adremClient, netCrunchConnection) {
     }
 
     if (![
-          { fmt: new RegExp('(.+)\\((.+)\\)\\\\(.+)'), parts: ['obj', 'inst', 'cnt'] }, // obj(inst)\cnt
-          { fmt: new RegExp('(.+)\\((.+)\\)'), parts: ['obj', 'inst'] }, // obj(inst)
-          { fmt: new RegExp('(.+)\\\\(.+)'), parts: ['obj', 'cnt'] } // obj\cnt
-        ].some((s) => {                             //eslint-disable-line
-          const parts = displayPath.match(s.fmt);
-          if (parts != null) {
-            s.parts.forEach((p, i) => {
-              result[p] = parts[i + 1];
-            });
-            return true;
-          }
-          return false;
-        })) {
+      { fmt: new RegExp('(.+)\\((.+)\\)\\\\(.+)'), parts: ['obj', 'inst', 'cnt'] }, // obj(inst)\cnt
+      { fmt: new RegExp('(.+)\\((.+)\\)'), parts: ['obj', 'inst'] }, // obj(inst)
+      { fmt: new RegExp('(.+)\\\\(.+)'), parts: ['obj', 'cnt'] } // obj\cnt
+    ].some((s) => {                             //eslint-disable-line
+      const parts = displayPath.match(s.fmt);
+      if (parts != null) {
+        s.parts.forEach((p, i) => {
+          result[p] = parts[i + 1];
+        });
+        return true;
+      }
+      return false;
+    })) {
       // formats do not match
       result.obj = displayPath;
     }
@@ -473,7 +465,7 @@ function NetCrunchCounters(adremClient, netCrunchConnection) {
   function isMillisecondsCounter(counter) {
     const c = decodePath(counter);
     return ((c.cnt === cnRTT) || (c.cnt === cnSCT) ||
-            (c.cnt.toUpperCase().indexOf('MILLISECOND') >= 0) || isKnownMillisecondCounter(c.cnt));
+      (c.cnt.toUpperCase().indexOf('MILLISECOND') >= 0) || isKnownMillisecondCounter(c.cnt));
   }
 
   function contains(cnt, substr) {

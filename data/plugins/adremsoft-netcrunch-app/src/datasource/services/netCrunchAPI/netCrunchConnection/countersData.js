@@ -21,22 +21,6 @@ function NetCrunchCountersData(adremClient, netCrunchServerConnection) {
     counterConsts = NETCRUNCH_COUNTER_CONST,
     cache = new NetCrunchSessionCache();
 
-  let
-    trendDB = null,
-    trendDBReadyResolve,
-    trendDBReadyReject,
-    trendDBReady = new Promise((resolve, reject) => {         // eslint-disable-line
-      trendDBReadyResolve = resolve;
-      trendDBReadyReject = reject;
-    }),
-    monitorMgrInf = null,
-    monitorMgrInfReadyResolve,
-    monitorMgrInfReadyReject,
-    monitorMgrInfReady = new Promise((resolve, reject) => {   // eslint-disable-line
-      monitorMgrInfReadyResolve = resolve;
-      monitorMgrInfReadyReject = reject;
-    });
-
   cache.addSection(COUNTERS_CACHE_SECTION);
   cache.addSection(COUNTERS_PATH_CACHE_SECTION);
   cache.addSection(MONITORS_CACHE_SECTION);
@@ -85,9 +69,15 @@ function NetCrunchCountersData(adremClient, netCrunchServerConnection) {
       }
 
       function compareCounters(counterA, counterB) {
-        if (counterA.displayName < counterB.displayName) { return -1; }
-        if (counterA.displayName > counterB.displayName) { return 1; }
-        if (counterA.displayName === counterB.displayName) { return 0; }
+        if (counterA.displayName < counterB.displayName) {
+          return -1;
+        }
+        if (counterA.displayName > counterB.displayName) {
+          return 1;
+        }
+        if (counterA.displayName === counterB.displayName) {
+          return 0;
+        }
         return 0;
       }
 
@@ -139,30 +129,14 @@ function NetCrunchCountersData(adremClient, netCrunchServerConnection) {
       let countersQuery;
 
       countersQuery = (fromCache) ? getCountersFromCache(nodeId) : null;
-
       if (countersQuery == null) {
-        if (trendDB == null) {
-          trendDB = new adremClient.NetCrunch.TrendDB('ncSrv', '', (status) => {
-            if (status === true) {
-              trendDBReadyResolve();
-            } else {
-              trendDBReadyReject();
-            }
-          }, netCrunchServerConnection);
-        }
-
-        countersQuery = trendDBReady
-          .then(() =>
-            new Promise((resolve) => {
-              trendDB.getCounters({ machineId: nodeId }, (counters) => {
-
-                // counters are in form [ "<monitorId>=<counter>", ... ]
-
-                counters = counters.map(counter => counter.split('='));
-                resolve(counters);
-              });
-            })
-          );
+        countersQuery = new Promise((resolve) => {
+          netCrunchServerConnection.ncSrv.IRemoteTrendDB.GetCounters(nodeId.toString(), (counters) => {
+            // counters are in form [ { id, path },... ]
+            counters = counters.map(c => ([c.id, c.path]));
+            resolve(counters);
+          });
+        });
         addCountersToCache(nodeId, countersQuery);
       }
       return countersQuery;
@@ -194,29 +168,17 @@ function NetCrunchCountersData(adremClient, netCrunchServerConnection) {
       monitorsQuery = (fromCache) ? getMonitorsFromCache() : null;
 
       if (monitorsQuery == null) {
-        if (monitorMgrInf == null) {
-          monitorMgrInf = new adremClient.NetCrunch.MonitorMgrIntf('ncSrv', (status) => {
-            if (status === true) {
-              monitorMgrInfReadyResolve();
-            } else {
-              monitorMgrInfReadyReject();
-            }
-          }, netCrunchServerConnection);
-        }
 
-        monitorsQuery = monitorMgrInfReady
-          .then(() =>
-            new Promise((resolve) => {
-              monitorMgrInf.getMonitorsInfo({}, (monitors) => {
-                const monitorsMap = Object.create(null);
+        monitorsQuery = new Promise((resolve) => {
+          netCrunchServerConnection.ncSrv.IMonitorsManager.GetMonitors(-1, (monitors) => {
+            const monitorsMap = Object.create(null);
+            monitors.forEach((monitor) => {
+              monitorsMap[monitor.monitorId] = monitor;
+            });
+            resolve(monitorsMap);
+          });
+        });
 
-                monitors.forEach((monitor) => {
-                  monitorsMap[monitor.monitorId] = monitor;
-                });
-                resolve(monitorsMap);
-              });
-            })
-          );
         addMonitorsToCache(monitorsQuery);
       }
 
