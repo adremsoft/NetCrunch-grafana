@@ -173,7 +173,7 @@ function NetCrunchCountersData(adremClient, netCrunchServerConnection) {
           netCrunchServerConnection.ncSrv.IMonitorsManager.GetMonitors(-1, (monitors) => {
             const monitorsMap = Object.create(null);
             monitors.forEach((monitor) => {
-              monitorsMap[monitor.monitorId] = monitor;
+              monitorsMap[monitor.id] = monitor;
             });
             resolve(monitorsMap);
           });
