@@ -36,7 +36,7 @@ class NetCrunchConnection {
   constructor(adrem, serverURL, connectionName) {
     this.adrem = adrem;
     this.adrem.useWebSocket = false; // disable web socket as it will not work with Grafana proxy
-    this.adrem.defaultRequestTimeout = 60 * 100; // Set longer timeout for requests
+    this.adrem.defaultRequestTimeout = 60 * 1000; // Set longer timeout for requests
     this.adrem.isEmbedded = false;
     this.apiName = CONNECTION_CONSTS.API_NAME;
     this.apiURL = serverURL + this.apiName;
