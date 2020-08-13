@@ -19,19 +19,16 @@ const
   remoteDataLists = `${adremModuleUrl}RemoteDataLists.min.js`;
 
 function importAdremClient() {
-  return SystemJS.import(adremClient)
-    .then(adrem =>
-      SystemJS.import(remoteDataLists)
-        .then(() => adrem)
-    );
+  return SystemJS.import(adremClient).then(adrem => SystemJS.import(remoteDataLists).then(() => adrem));
 }
 
 // eslint-disable-next-line
-const adrem = importAdremClient();
+const
+  adrem = importAdremClient();
 
-angular
-  .module(servicesModule)
-    .factory('adrem', () => adrem);
+angular.module(servicesModule).factory('adrem', () => adrem);
+
+console.log('module imported => ', adrem);
 
 export {
   adrem,
