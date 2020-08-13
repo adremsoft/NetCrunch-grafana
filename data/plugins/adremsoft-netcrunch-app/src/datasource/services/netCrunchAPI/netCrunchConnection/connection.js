@@ -44,7 +44,9 @@ class NetCrunchConnection {
     this.loginInProgress = false;
     this.loginInProgressPromise = null;
     this.networkAtlas = new Map();
-    this.networkAtlasReady = new Promise((resolve) => { this.networkAtlasReadyResolve = resolve; });
+    this.networkAtlasReady = new Promise((resolve) => {
+      this.networkAtlasReadyResolve = resolve;
+    });
     this.counters = new Map();
     this.trends = null;
   }
@@ -110,14 +112,14 @@ class NetCrunchConnection {
     const self = this;
 
     function nodesChanged() {
-      if (typeof this.onNodesChanged === 'function') {
-        this.onNodesChanged();
+      if (typeof self.onNodesChanged === 'function') {
+        self.onNodesChanged();
       }
     }
 
     function networksChanged() {
-      if (typeof this.onNetworksChanged === 'function') {
-        this.onNetworksChanged();
+      if (typeof self.onNetworksChanged === 'function') {
+        self.onNetworksChanged();
       }
     }
 
@@ -131,27 +133,25 @@ class NetCrunchConnection {
       this.serverConnectionReady = this.establishConnection();
     }
 
-    return this.serverConnectionReady
-      .then(() =>
-        this.authenticateUser(userName, password)
-          .then(() => getUserProfileData())
-          .then((userProfile) => {
-            this.userProfile = userProfile;
-            this.networkAtlas = new NetCrunchNetworkData(this.adremClient, this);
-            this.networkAtlas.onNodesChanged = nodesChanged.bind(this);
-            this.networkAtlas.onNetworksChanged = networksChanged.bind(this);
-            this.counters = new NetCrunchCountersData(this.adremClient, this.serverConnection);
-            this.trends = new NetCrunchTrendData(this);
+    return this.serverConnectionReady.then(() =>
+      this.authenticateUser(userName, password)
+        .then(() => getUserProfileData())
+        .then((userProfile) => {
+          this.userProfile = userProfile;
+          this.networkAtlas = new NetCrunchNetworkData(this.adremClient, this);
+          this.networkAtlas.onNodesChanged = nodesChanged.bind(this);
+          this.networkAtlas.onNetworksChanged = networksChanged.bind(this);
+          this.counters = new NetCrunchCountersData(this.adremClient, this.serverConnection);
+          this.trends = new NetCrunchTrendData(this);
 
-            if (ignoreDownloadNetworkAtlas !== true) {
-              this.networkAtlas.init()
-                .then(() => {
-                  this.networkAtlasReadyResolve(this.networkAtlas);
-                });
-            }
-            return true;
-          })
-      );
+          if (ignoreDownloadNetworkAtlas !== true) {
+            this.networkAtlas
+              .init()
+              .then(() => this.networkAtlasReadyResolve(this.networkAtlas));
+          }
+          return true;
+        })
+    );
   }
 
   logout() {
@@ -234,8 +234,12 @@ class NetCrunchConnection {
           } else if (attempt > 1) {
             setTimeout(() => {
               tryAuthenticate(userName, password, attempt - 1)
-                .then(() => { resolve(); })
-                .catch(() => { reject(); });
+                .then(() => {
+                  resolve();
+                })
+                .catch(() => {
+                  reject();
+                });
             }, loginTimeout(attempt));
           } else {
             reject();
@@ -273,7 +277,7 @@ class NetCrunchConnection {
 
   loggedIn() {
     return ((this.netCrunchClient != null) && ('Session' in this.netCrunchClient) &&
-            (this.netCrunchClient.status.logged === true));
+      (this.netCrunchClient.status.logged === true));
   }
 
   queryTrendData() {

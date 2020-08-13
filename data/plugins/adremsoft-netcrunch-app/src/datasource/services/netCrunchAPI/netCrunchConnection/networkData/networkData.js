@@ -43,9 +43,7 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
         });
       }
 
-      dataList.open(table, query, () => {
-        resolve();
-      });
+      dataList.open(table, query, () => resolve());
     });
   }
 
@@ -76,7 +74,7 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
       .all([nodesReady.promise, networksReady.promise])
       .then(() => networkAtlas),
 
-    init: function() {
+    init() {
       const
         self = this,
         { accessProfileId, orgId } = getAccessRightsParameters(netCrunchConnection.userProfile),
@@ -122,9 +120,7 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
 
       return remoteDataInitialized;
     }
-
   };
-
 }
 
 export {

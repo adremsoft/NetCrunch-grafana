@@ -9,10 +9,6 @@
 import { adrem } from './adrem/module';
 import { CONNECTION_ERROR_MESSAGES, MAX_SAMPLE_COUNT } from './netCrunchAPI.service';
 
-adrem.useWebSocket = false; // disable web socket as it will not work with Grafana proxy
-adrem.defaultRequestTimeout = 60 * 1000; // Set longer timeout for requests
-adrem.isEmbedded = false;
-
 export {
   adrem,
   CONNECTION_ERROR_MESSAGES,
