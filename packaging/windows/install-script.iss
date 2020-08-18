@@ -1,7 +1,7 @@
 #define MyAppID "{5FFA65A5-D4CF-4E26-9AC0-1615E3895B1E}"
 #define MyAppName "AdRem GrafCrunch Server"
-#define MyAppVersion "9.3.4.3897"
-#define FileVersion "9.3.4.3897"
+#define MyAppVersion "11.0.0.5247"
+#define FileVersion "11.0.0.5247"
 #define MyAppPublisher "AdRem Software, Inc. New York, NY"
 #define MyAppURL "http://www.adremsoft.com/"
 #define MyAppIcon "icon.ico"
@@ -37,8 +37,8 @@
 #define NetCrunchServerKey "SOFTWARE\AdRem\NetCrunch\10\NCServer\Options\ServerConfiguration"
 #define WebAppServerKey "SOFTWARE\AdRem\WebAppSrv\1.0"
 
-#define SignKey ""
-#define SignKeyPassword ""
+#define SignKey "Z:\CodeCertificate2019.pfx"
+#define SignKeyPassword "AdRemKey"
 #define TimeStampService "http://timestamp.globalsign.com/scripts/timstamp.dll"
 
 [Setup]
@@ -50,16 +50,16 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-AppCopyright=2017 (c) AdRem Software Inc., all rights reserved
+AppCopyright=2020 (c) AdRem Software Inc., all rights reserved
 VersionInfoVersion={#FileVersion}
 LicenseFile={#LICENSE}
 DefaultDirName={pf64}\AdRem\GrafCrunch
 DefaultGroupName={#MyAppGroupName}
 OutputDir=release
-OutputBaseFilename=NC10GrafCrunch
+OutputBaseFilename=NC11GrafCrunch
 SetupIconFile={#MyAppIcon}
 UninstallDisplayIcon={app}\{#MyAppIcon}
-SignTool=AdRemSignTool sign /f "{#SignKey}" /v /p "{#SignKeyPassword}" /t "{#TimeStampService}" $f
+SignedUninstaller=yes
 Compression=lzma
 SolidCompression=yes
 ArchitecturesAllowed=x64
@@ -107,7 +107,6 @@ Source: "dest\bin\grafana-cli.exe"; DestDir: "{app}\bin\"; DestName: "grafana-cl
 Source: "dest\conf\*"; DestDir: "{app}\conf\"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\data\plugins\adremsoft-netcrunch-app\dist\*"; DestDir: "{#GrafCrunchProgramData}\plugins\adremsoft-netcrunch-app\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\public\*"; DestDir: "{app}\public\"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\scripts\*"; DestDir: "{app}\scripts\"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\tools\*"; DestDir: "{app}\tools\"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#GrafCrunchClientURL}"; DestDir: "{app}"; Flags: ignoreversion
 
