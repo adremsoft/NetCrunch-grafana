@@ -105,7 +105,7 @@ Source: "RunGrafCrunch\Win64\Release\RunGrafCrunch.exe"; DestDir: "{app}\bin\"; 
 Source: "dest\bin\grafana-server.exe"; DestDir: "{app}\bin\"; DestName: "GCServer.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\bin\grafana-cli.exe"; DestDir: "{app}\bin\"; DestName: "grafana-cli.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\conf\*"; DestDir: "{app}\conf\"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\data\plugins\*"; DestDir: "{#GrafCrunchProgramData}\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dest\data\plugins\adremsoft-netcrunch-app\dist\*"; DestDir: "{#GrafCrunchProgramData}\plugins\adremsoft-netcrunch-app\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\public\*"; DestDir: "{app}\public\"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\scripts\*"; DestDir: "{app}\scripts\"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dest\tools\*"; DestDir: "{app}\tools\"; Flags: ignoreversion recursesubdirs createallsubdirs
