@@ -7,6 +7,7 @@
     "space-before-function-paren": ["error", "never"],
     "comma-dangle": ["error", "never"],
     "padded-blocks": 0,
+    "no-param-reassign" : 0,
     "import/prefer-default-export": 0,
     "one-var": ["error", {
       "var": "always",
