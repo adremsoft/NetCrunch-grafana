@@ -1,2 +1,0 @@
-"use strict";System.register([],function(_export){"use strict";var NetCrunchAppConfigCtrl;function _classCallCheck(instance,Constructor){if(!(instance instanceof Constructor))throw new TypeError("Cannot call a class as a function")}return{setters:[],execute:function(){_export("NetCrunchAppConfigCtrl",NetCrunchAppConfigCtrl=function NetCrunchAppConfigCtrl(){_classCallCheck(this,NetCrunchAppConfigCtrl)});_export("NetCrunchAppConfigCtrl",NetCrunchAppConfigCtrl)}}});
-//# sourceMappingURL=config.js.map

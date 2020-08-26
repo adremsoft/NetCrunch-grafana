@@ -99,3 +99,4 @@ debug.test
 /vendor/**/.editorconfig
 /vendor/**/appengine*
 *.orig
+data/plugins/adremsoft-netcrunch-app/dist/*
