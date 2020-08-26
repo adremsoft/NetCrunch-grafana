@@ -10,7 +10,7 @@
 /* eslint-disable quote-props */
 
 const
-  MAP_ICON_ID_UNKNOWN = 100,
+  // MAP_ICON_ID_UNKNOWN = 100,
   ICON_SIZE = 25,
   DEVICE_TYPES = {
     'WINDOWS': [1, [1, 2]],
