@@ -35,12 +35,12 @@ class NetCrunchNetworkNode {
 
   constructor(nodeRec, netCrunchServerConnection) {
     const
-      deviceType = NetCrunchNetworkNode.parseDeviceType(nodeRec.getValues().DeviceType);
+      values = nodeRec.getValues();
 
-    this[PRIVATE_PROPERTIES.values] = nodeRec.getValues();
-    this[PRIVATE_PROPERTIES.local] = Object.assign({}, deviceType);
+    this[PRIVATE_PROPERTIES.values] = values;
+    this[PRIVATE_PROPERTIES.local] = Object.assign({}, values.DeviceType);
     this[PRIVATE_PROPERTIES.local].iconUrl =
-      NetCrunchNetworkNode.getIconUrl(deviceType.iconId, netCrunchServerConnection);
+      NetCrunchNetworkNode.getIconUrl(values.DeviceType.iconId, netCrunchServerConnection);
   }
 
   get id() {
@@ -63,54 +63,6 @@ class NetCrunchNetworkNode {
     return this[PRIVATE_PROPERTIES.local].iconUrl;
   }
 
-  static parseXML(data) {
-    let xml;
-
-    if (!data || typeof data !== 'string') {
-      return null;
-    }
-
-    try {
-      xml = (new window.DOMParser()).parseFromString(data, 'text/xml');
-    } catch (e) {
-      xml = undefined;
-    }
-
-    return xml;
-  }
-
-  static createDeviceType(iconId = 0, classId, categoryId, subCategoryId, manufacturerId) {
-    return {
-      iconId,
-      classId,
-      categoryId,
-      subCategoryId,
-      manufacturerId
-    };
-  }
-
-  static parseDeviceType(deviceTypeXML) {
-
-    if ((deviceTypeXML !== '') && (deviceTypeXML != null)) {
-      const
-        doc = NetCrunchNetworkNode.parseXML(deviceTypeXML),
-        deviceType = doc.getElementsByTagName('devtype');
-
-      if (deviceType[0] != null) {
-        return NetCrunchNetworkNode.createDeviceType(
-          deviceType[0].getAttribute('iconid') || MAP_ICON_ID_UNKNOWN,
-          deviceType[0].getAttribute('classid'),
-          deviceType[0].getAttribute('CategoryId'),
-          deviceType[0].getAttribute('SubCategoryId'),
-          deviceType[0].getAttribute('ManufacturerId')
-        );
-      }
-      return NetCrunchNetworkNode.createDeviceType();
-    }
-
-    return NetCrunchNetworkNode.createDeviceType();
-  }
-
   static getIconUrl(iconId, serverConnection) {
     const iconUrl = serverConnection.ncSrv.IMapIcons.GetIcon.asURL(iconId, ICON_SIZE, 'ok');
     return serverConnection.Client.urlFilter(iconUrl);
@@ -120,8 +72,8 @@ class NetCrunchNetworkNode {
     const pattern = DEVICE_TYPES[deviceTypePattern.toUpperCase()];
 
     if ((pattern != null) && (pattern.length === 2)) {
-      return ((this[PRIVATE_PROPERTIES.local].classId === String(pattern[0])) &&
-               pattern[1].some(categoryId => (this[PRIVATE_PROPERTIES.local].categoryId === String(categoryId))));
+      return ((this[PRIVATE_PROPERTIES.local].classId === pattern[0]) &&
+               pattern[1].some(categoryId => (this[PRIVATE_PROPERTIES.local].categoryId === categoryId)));
     }
 
     return false;
