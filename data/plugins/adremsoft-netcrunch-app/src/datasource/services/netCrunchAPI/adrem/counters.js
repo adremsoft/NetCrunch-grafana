@@ -284,11 +284,11 @@ function NetCrunchCounters(adremClient, netCrunchConnection) {
 
 
   function getShortOidPath(oid) {
-    return getOidPath(oid, shortOidPathsCache, netCrunchConnection.ncSrv.IRemoteSNMPMIBData.GetShortOIDPath);
+    return getOidPath(oid, shortOidPathsCache, (oid, callback) => netCrunchConnection.ncSrv.IRemoteSNMPMIBData.GetShortOIDPath(oid, callback));
   }
 
   function getFullOidPath(oid) {
-    return getOidPath(oid, fullOidPathsCache, netCrunchConnection.ncSrv.IRemoteSNMPMIBData.GetFullOIDPath);
+    return getOidPath(oid, fullOidPathsCache, (oid, callback) => netCrunchConnection.ncSrv.IRemoteSNMPMIBData.GetFullOIDPath(oid, callback));
   }
 
   function decodePath(path) {
