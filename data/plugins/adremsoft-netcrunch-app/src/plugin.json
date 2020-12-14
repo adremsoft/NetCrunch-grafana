@@ -25,8 +25,8 @@
       {"name": "License & Terms", "url": "https://github.com/adremsoft/grafana-netcrunch-plugin/blob/grafCrunch/LICENSE"},
       {"name": "NetCrunch Documentation", "url": "https://www.adremsoft.com/adoc/view/netcrunch/"}
     ],
-    "version": "2.0.0",
-    "updated": "2018-03-07"
+    "version": "2.12.0",
+    "updated": "2020-12-15"
   },
 
   "includes": [
