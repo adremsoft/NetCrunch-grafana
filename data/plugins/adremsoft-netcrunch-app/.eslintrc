@@ -1,6 +1,11 @@
 {
   "parser": "babel-eslint",
-  "extends": "airbnb",
+  "extends": "eslint:recommended",
+  "env": {
+       "es6" : true,
+       "browser": true,
+       "commonjs": true
+  },
   "rules": {
     "linebreak-style": 0,
     "max-len": [1, 120, 2, { "ignoreComments": true }],
@@ -9,6 +14,7 @@
     "padded-blocks": 0,
     "no-param-reassign" : 0,
     "import/prefer-default-export": 0,
+    "no-shadow" : ["error" ],
     "one-var": ["error", {
       "var": "always",
       "let": "always",
