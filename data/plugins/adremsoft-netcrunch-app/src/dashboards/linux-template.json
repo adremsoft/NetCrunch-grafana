@@ -69,7 +69,7 @@
   "annotations" : {
     "list" : []
   },
-  "refresh" : "30s",
+  "refresh" : "1m",
   "schemaVersion" : 13,
   "version" : 0,
   "links" : [],
