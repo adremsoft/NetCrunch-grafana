@@ -6,9 +6,9 @@
  * found in the LICENSE file.
  */
 
-import { NetCrunchNetworkData } from './networkData/networkData';
-import { NetCrunchCountersData } from './countersData';
-import { NetCrunchTrendData, NETCRUNCH_TREND_DATA_CONST } from './trendData';
+import {NetCrunchNetworkData} from './networkData/networkData';
+import {NetCrunchCountersData} from './countersData';
+import {NetCrunchTrendData, NETCRUNCH_TREND_DATA_CONST} from './trendData';
 
 const
   CONNECTION_CONSTS = {
@@ -227,22 +227,26 @@ class NetCrunchConnection {
 
     function tryAuthenticate(userName, password, attempt) {           // eslint-disable-line
       return new Promise((resolve, reject) => {
-        const applicationLogin = JSON.stringify({ user: userName, application: 'GrafCrunch' });
-        netCrunchClient.login(applicationLogin, password, (status) => {
-          if (status === true) {
-            resolve();
-          } else if (attempt > 1) {
-            setTimeout(() => {
-              tryAuthenticate(userName, password, attempt - 1)
-                .then(() => {
-                  resolve();
-                })
-                .catch(() => {
-                  reject();
-                });
-            }, loginTimeout(attempt));
-          } else {
-            reject();
+        netCrunchClient.loginEx({
+          name: userName,
+          app: 'GrafCrunch',
+          password,
+          callback(status) {
+            if (status === true) {
+              resolve();
+            } else if (attempt > 1) {
+              setTimeout(() => {
+                tryAuthenticate(userName, password, attempt - 1)
+                  .then(() => {
+                    resolve();
+                  })
+                  .catch(() => {
+                    reject();
+                  });
+              }, loginTimeout(attempt));
+            } else {
+              reject();
+            }
           }
         });
       });
