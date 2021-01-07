@@ -34,7 +34,7 @@
 #define DefaultNetCrunchServerProtocolSSL "https"
 #define DefaultNetCrunchServerUser "GrafCrunch"
 
-#define NetCrunchServerKey "SOFTWARE\AdRem\NetCrunch\10\NCServer\Options\ServerConfiguration"
+#define NetCrunchServerKey "SOFTWARE\AdRem\NetCrunch\11\NCServer\Options\ServerConfiguration"
 #define WebAppServerKey "SOFTWARE\AdRem\WebAppSrv\1.0"
 
 #define SignKey "Z:\CodeCertificate2019.pfx"
