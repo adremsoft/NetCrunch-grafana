@@ -16,12 +16,14 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
     netCrunchServerConnection = netCrunchConnection.serverConnection,
     networkAtlas = new NetCrunchNetworkAtlas(netCrunchServerConnection),
     nodesReady = {},
-    networksReady = {};
+    networksReady = {},
+    sensorsReady = {};
 
   let remoteDataInitialized = null;
 
   nodesReady.promise = new Promise(resolve => (nodesReady.resolve = resolve));
   networksReady.promise = new Promise(resolve => (networksReady.resolve = resolve));
+  sensorsReady.promise = new Promise(resolve => (sensorsReady.resolve = resolve));
 
   function openRemoteData(table, query, processFunction, notifyFunction) {
     const
@@ -54,6 +56,10 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
   function processMapData(mapRec) {
     networkAtlas.addMap(mapRec);
   }
+  
+  function processSensorData(sensorRec) {
+    networkAtlas.addSensor(sensorRec);
+  }
 
   function getAccessRightsParameters(userProfile) {
     return userProfile.$children.reduce((result, current) => {
@@ -70,8 +76,9 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
   return {
     nodes: () => nodesReady.promise,
     networks: () => networksReady.promise,
+    sensors: () => sensorsReady.promise,
     atlas: () => Promise
-      .all([nodesReady.promise, networksReady.promise])
+      .all([nodesReady.promise, networksReady.promise, networksReady.promise])
       .then(() => networkAtlas),
 
     init() {
@@ -80,19 +87,24 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
         { accessProfileId, orgId } = getAccessRightsParameters(netCrunchConnection.userProfile),
 
         PERFORMANCE_VIEWS_NET_INT_ID = 2,
-        HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode' +
+        HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName' +
                       ' where CanAccessNode(Id, \'' + accessProfileId + ':' + orgId + '\')',
         NETWORKS_QUERY = 'Select NetIntId, DisplayName, HostMapData, IconId, MapType, NetworkData, MapClassTag ' +
                          'where (MapClassTag != \'pnet\') && (MapClassTag != \'dependencynet\') && ' +
                                '(MapClassTag != \'issuesnet\') && (MapClassTag != \'all\') && ' +
-                               '(NetIntId != ' + PERFORMANCE_VIEWS_NET_INT_ID + ')';
+                               '(NetIntId != ' + PERFORMANCE_VIEWS_NET_INT_ID + ')',
+        SENSORS_QUERY = "Select NodeId, Name, Status, UId, Alerts, CfgGroup " +
+                        "where CfgGroup = 'sensors' || CfgGroup = 'cloud'";    
 
       let
         hostsData,
-        networkData;
+        networkData,
+        sensorsData,
+        hostsResolved = false;
 
       function hostsChanged() {
         nodesReady.resolve(networkAtlas.nodes);
+        hostsResolved = true;
         if (typeof self.onNodesChanged === 'function') {
           self.onNodesChanged();
         }
@@ -103,6 +115,13 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
 
         if (typeof self.onNetworksChanged === 'function') {
           self.onNetworksChanged();
+        }
+      }
+      
+      function sensorsChanged() {
+        sensorsReady.resolve(networkAtlas.sensors);
+        if (hostsResolved && typeof self.onNodesChanged === 'function') {
+          self.onNodesChanged();
         }
       }
 
@@ -116,7 +135,10 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
       // eslint-disable-next-line
       networkData = openRemoteData('Networks', NETWORKS_QUERY, processMapData, networksChanged);
 
-      remoteDataInitialized = Promise.all([hostsData, networkData]);
+      // eslint-disable-next-line
+      sensorsData = openRemoteData('SensorStatus', SENSORS_QUERY, processSensorData, sensorsChanged);
+
+      remoteDataInitialized = Promise.all([hostsData, networkData, sensorsData]);
 
       return remoteDataInitialized;
     }
