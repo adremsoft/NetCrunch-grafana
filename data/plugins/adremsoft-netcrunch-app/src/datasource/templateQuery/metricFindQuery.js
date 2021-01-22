@@ -154,13 +154,28 @@ class NetCrunchMetricFindQuery {
 
       return nodesAtlasMonitoringPack;
     }
+    
+    function nodeSensorTokenProcessor(sensor, nodeList) {
+      const
+        sensorType = sensor.split('.')[1] || '',
+        success = sensorType !== '',
+        filteredNodes = success ? nodeList.filter(node => {
+          const sensors = atlas.getNodeSensors(node.id);
+          return sensors.includes(sensorType);
+        }) : [];
+      return getProcessingResult(
+        success,
+        filteredNodes
+      );
+    }
 
     const
       tokenProcessors = {
         nodes: createNodesTokenProcessor(nodes),
         deviceType: deviceTypeTokenProcessor,
         networkMap: networkMapTokenProcessor,
-        monitoringPack: monitoringPackTokenProcessor
+        monitoringPack: monitoringPackTokenProcessor,
+        sensor: nodeSensorTokenProcessor
       };
     let
       currentToken,
@@ -186,7 +201,7 @@ class NetCrunchMetricFindQuery {
 
   static createQueryResult(nodes) {
     return (nodes || []).map((node) => {
-      const ipAddress = (node.address != null) ? `(${node.address})` : '';
+      const ipAddress = ((node.address || "") !== "") ? `(${node.address})` : '';
       return {
         text: `${node.name} ${ipAddress}`,
         value: node.id
