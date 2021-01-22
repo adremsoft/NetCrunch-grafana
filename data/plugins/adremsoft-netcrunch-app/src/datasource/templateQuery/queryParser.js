@@ -276,6 +276,10 @@ class QueryTokenReaders {
                         '|unix|novell|ibm';
     return GenericTokenReaders.readToken('deviceType', `\\.(${deviceTypes})`, input);
   }
+  
+  static readSensor(input) {
+    return GenericTokenReaders.readToken('sensor', '\\.(sensor\\..+)', input);
+  }
 
 }
 
@@ -300,6 +304,7 @@ class QueryParser {
         '.view': QueryTokenReaders.readView,
         '.name': QueryTokenReaders.readName,
         '.deviceType': QueryTokenReaders.readDeviceType,
+        '.sensor': QueryTokenReaders.readSensor,
         'nothing': GenericTokenReaders.readNullToken                  // eslint-disable-line quote-props
       },
       queryGrammar = {
@@ -347,7 +352,12 @@ class QueryParser {
         },
 
         query: (input) => {
-          const parameters = [queryGrammar.networkMapOrMonitoringPack, atoms['.deviceType'], atoms.nothing];
+          const parameters = [
+            queryGrammar.networkMapOrMonitoringPack, 
+            atoms['.deviceType'], 
+            atoms.nothing,
+            atoms['.sensor']
+          ];
           let
             result = atoms.nodes(input),
             parametersResult;
