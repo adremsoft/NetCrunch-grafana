@@ -16,6 +16,7 @@ const
   PRIVATE_PROPERTIES = {
     connection: Symbol('connection'),
     nodes: Symbol('nodes'),
+    sensorNodes: Symbol('sensorNodes'),
     atlasMaps: Symbol('atlasMaps'),
     orphans: Symbol('orphans')
   },
@@ -35,6 +36,7 @@ class NetCrunchNetworkAtlas {
   constructor(netCrunchServerConnection) {
     this[PRIVATE_PROPERTIES.connection] = netCrunchServerConnection;
     this[PRIVATE_PROPERTIES.nodes] = new NetCrunchNodes();
+    this[PRIVATE_PROPERTIES.sensorNodes] = new Map();
     this[PRIVATE_PROPERTIES.atlasMaps] = new Map();
     this[PRIVATE_PROPERTIES.atlasMaps].set(ATLAS_ROOT_ID, new NetCrunchNetworkMap(ROOT_MAP_REC));
     this[PRIVATE_PROPERTIES.orphans] = [];
@@ -83,6 +85,22 @@ class NetCrunchNetworkAtlas {
   addNode(nodeRec) {
     const node = new NetCrunchNetworkNode(nodeRec, this[PRIVATE_PROPERTIES.connection]);
     this[PRIVATE_PROPERTIES.nodes].add(node);
+  }
+  
+  addSensor(sensorRec) {
+    const sensor = sensorRec.getValues();
+    let nodeSensors = this[PRIVATE_PROPERTIES.sensorNodes].get(sensor.NodeId);
+    if (nodeSensors == null) {
+      nodeSensors = new Map();
+      this[PRIVATE_PROPERTIES.sensorNodes].set(sensor.NodeId, nodeSensors);
+    }
+    sensor.type = sensor.UId.split('#')[0];
+    nodeSensors.set(sensor.UId, sensor);
+  }
+
+  getNodeSensors(nodeId) {
+    const sensors = this[PRIVATE_PROPERTIES.sensorNodes].get(nodeId);
+    return sensors != null ? Array.from(sensors.values()).map(s => s.type) : [];
   }
 
   get nodes() {
