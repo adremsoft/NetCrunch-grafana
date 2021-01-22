@@ -48,7 +48,7 @@ class NetCrunchNetworkNode {
   }
 
   get name() {
-    return this[PRIVATE_PROPERTIES.values].Name;
+    return this[PRIVATE_PROPERTIES.values].CustomDisplayName || this[PRIVATE_PROPERTIES.values].Name;
   }
 
   get address() {
