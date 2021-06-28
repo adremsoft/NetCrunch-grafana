@@ -61,18 +61,6 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
     networkAtlas.addSensor(sensorRec);
   }
 
-  function getAccessRightsParameters(userProfile) {
-    return userProfile.$children.reduce((result, current) => {
-      if (current.$tag === 'User') {
-        return {
-          accessProfileId: current.ACProfileId,
-          orgId: current.orgId
-        };
-      }
-      return result;
-    }, {});
-  }
-
   return {
     nodes: () => nodesReady.promise,
     networks: () => networksReady.promise,
@@ -84,11 +72,9 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
     init() {
       const
         self = this,
-        { accessProfileId, orgId } = getAccessRightsParameters(netCrunchConnection.userProfile),
 
         PERFORMANCE_VIEWS_NET_INT_ID = 2,
-        HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName' +
-                      ' where CanAccessNode(Id, \'' + accessProfileId + ':' + orgId + '\')',
+        HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName',
         NETWORKS_QUERY = 'Select NetIntId, DisplayName, HostMapData, IconId, MapType, NetworkData, MapClassTag ' +
                          'where (MapClassTag != \'pnet\') && (MapClassTag != \'dependencynet\') && ' +
                                '(MapClassTag != \'issuesnet\') && (MapClassTag != \'all\') && ' +
