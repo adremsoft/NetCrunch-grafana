@@ -1,52 +1,47 @@
-import React from 'react';
+import React, { FC } from 'react';
+import { css, cx } from 'emotion';
+import { useTheme, stylesFactory } from '@grafana/ui';
+import { GrafanaTheme } from '@grafana/data';
+
+import { OptionProps } from 'react-select/src/components/Option';
 import { TagBadge } from './TagBadge';
 
-export interface IProps {
-  onSelect: any;
-  onFocus: any;
-  option: any;
-  isFocused: any;
-  className: any;
+// https://github.com/JedWatson/react-select/issues/3038
+interface ExtendedOptionProps extends OptionProps<any> {
+  data: any;
 }
 
-export class TagOption extends React.Component<IProps, any> {
-  constructor(props) {
-    super(props);
-    this.handleMouseDown = this.handleMouseDown.bind(this);
-    this.handleMouseEnter = this.handleMouseEnter.bind(this);
-    this.handleMouseMove = this.handleMouseMove.bind(this);
-  }
+export const TagOption: FC<ExtendedOptionProps> = ({ data, className, label, isFocused, innerProps }) => {
+  const theme = useTheme();
+  const styles = getStyles(theme);
 
-  handleMouseDown(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    this.props.onSelect(this.props.option, event);
-  }
+  return (
+    <div className={cx(styles.option, isFocused && styles.optionFocused)} aria-label="Tag option" {...innerProps}>
+      <div className={`tag-filter-option ${className || ''}`}>
+        <TagBadge label={label} removeIcon={false} count={data.count} />
+      </div>
+    </div>
+  );
+};
 
-  handleMouseEnter(event) {
-    this.props.onFocus(this.props.option, event);
-  }
-
-  handleMouseMove(event) {
-    if (this.props.isFocused) {
-      return;
-    }
-    this.props.onFocus(this.props.option, event);
-  }
-
-  render() {
-    const { option, className } = this.props;
-
-    return (
-      <button
-        onMouseDown={this.handleMouseDown}
-        onMouseEnter={this.handleMouseEnter}
-        onMouseMove={this.handleMouseMove}
-        title={option.title}
-        className={`tag-filter-option btn btn-link ${className || ''}`}
-      >
-        <TagBadge label={option.label} removeIcon={false} count={option.count} onClick={this.handleMouseDown} />
-      </button>
-    );
-  }
-}
+const getStyles = stylesFactory((theme: GrafanaTheme) => {
+  return {
+    option: css`
+      padding: 8px;
+      white-space: nowrap;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      &:hover {
+        background: ${theme.colors.dropdownOptionHoverBg};
+      }
+    `,
+    optionFocused: css`
+      background: ${theme.colors.dropdownOptionHoverBg};
+      border-style: solid;
+      border-top: 0;
+      border-right: 0;
+      border-bottom: 0;
+      border-left-width: 2px;
+    `,
+  };
+});

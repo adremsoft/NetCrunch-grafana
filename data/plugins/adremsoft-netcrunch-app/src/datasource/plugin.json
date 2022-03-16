@@ -1,11 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/master/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "NetCrunch",
   "id": "adremsoft-netcrunch-datasource",
 
   "metrics": true,
-  "alerting": false,
-  "annotations": false,
 
   "queryOptions": {
     "maxDataPoints": true
@@ -21,6 +20,20 @@
     "logos": {
       "small": "images/datasource-small-logo.png",
       "large": "images/datasource-large-logo.png"
-    }
+    },
+    "links": [
+      {"name": "AdRem Software", "url": "https://www.adremsoft.com"},
+      {"name": "Project site", "url": "https://github.com/adremsoft/grafana-netcrunch-plugin/tree/grafCrunch"},
+      {"name": "License & Terms", "url": "https://github.com/adremsoft/grafana-netcrunch-plugin/blob/grafCrunch/LICENSE"},
+      {"name": "NetCrunch Documentation", "url": "https://www.adremsoft.com/adoc/view/netcrunch/"}
+    ],
+    "screenshots": [],
+    "version": "3.0.0",
+    "updated": "2022-03-10"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=7.0.0",
+    "grafanaVersion": "7.0.0",
+    "plugins": []
   }
 }

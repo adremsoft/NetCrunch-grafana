@@ -8,6 +8,7 @@
 
 import { CONNECTION_ERROR_MESSAGES, MAX_SAMPLE_COUNT } from './services/netCrunchAPI/module';
 import { NetCrunchMetricFindQuery } from './templateQuery/metricFindQuery';
+import { DataSourceApi } from '@grafana/data';  // eslint-disable-line
 
 const
   PRIVATE_PROPERTIES = {
@@ -31,9 +32,10 @@ const
   NET_CRUNCH_DATASOURCE_DI = ['instanceSettings', 'netCrunchAPIService', 'alertSrv', 'templateSrv', '$rootScope',
     '$timeout'];
 
-class NetCrunchDatasource {
+class NetCrunchDatasource extends DataSourceApi {
 
   constructor(instanceSettings, netCrunchAPIService, alertSrv, templateSrv, $rootScope, $timeout) {
+    super(instanceSettings);
     const
       self = this,
       nodesBuffer = {};

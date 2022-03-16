@@ -2,10 +2,10 @@ package alerting
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
-	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/validations"
+
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -29,7 +29,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 				Conditions: []Condition{&conditionStub{
 					firing: true,
 				}},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, true)
@@ -39,7 +39,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 		Convey("Show return triggered with single passing condition2", func() {
 			context := NewEvalContext(context.TODO(), &Rule{
 				Conditions: []Condition{&conditionStub{firing: true, operator: "and"}},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, true)
@@ -52,7 +52,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: true, operator: "and", matches: []*EvalMatch{{}, {}}},
 					&conditionStub{firing: false, operator: "and"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, false)
@@ -65,7 +65,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: true, operator: "and"},
 					&conditionStub{firing: false, operator: "or"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, true)
@@ -78,7 +78,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: true, operator: "and"},
 					&conditionStub{firing: false, operator: "and"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, false)
@@ -92,7 +92,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: true, operator: "and"},
 					&conditionStub{firing: false, operator: "or"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, true)
@@ -106,7 +106,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: false, operator: "and"},
 					&conditionStub{firing: false, operator: "or"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, false)
@@ -120,7 +120,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: false, operator: "and"},
 					&conditionStub{firing: true, operator: "and"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, false)
@@ -134,7 +134,7 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: false, operator: "or"},
 					&conditionStub{firing: true, operator: "or"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, true)
@@ -148,128 +148,61 @@ func TestAlertingEvaluationHandler(t *testing.T) {
 					&conditionStub{firing: false, operator: "or"},
 					&conditionStub{firing: false, operator: "or"},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, false)
 			So(context.ConditionEvals, ShouldEqual, "[[false OR false] OR false] = false")
 		})
 
-		Convey("Should retuasdfrn no data if one condition has nodata", func() {
+		// FIXME: What should the actual test case name be here?
+		Convey("Should not return NoDataFound if all conditions have data and using OR", func() {
 			context := NewEvalContext(context.TODO(), &Rule{
 				Conditions: []Condition{
 					&conditionStub{operator: "or", noData: false},
 					&conditionStub{operator: "or", noData: false},
 					&conditionStub{operator: "or", noData: false},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.NoDataFound, ShouldBeFalse)
 		})
 
-		Convey("Should return no data if one condition has nodata", func() {
+		Convey("Should return NoDataFound if one condition has no data", func() {
 			context := NewEvalContext(context.TODO(), &Rule{
 				Conditions: []Condition{
 					&conditionStub{operator: "and", noData: true},
 				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.Firing, ShouldEqual, false)
 			So(context.NoDataFound, ShouldBeTrue)
 		})
 
-		Convey("Should return no data if both conditions have no data and using AND", func() {
+		Convey("Should return no data if at least one condition has no data and using AND", func() {
 			context := NewEvalContext(context.TODO(), &Rule{
 				Conditions: []Condition{
 					&conditionStub{operator: "and", noData: true},
 					&conditionStub{operator: "and", noData: false},
 				},
-			})
-
-			handler.Eval(context)
-			So(context.NoDataFound, ShouldBeFalse)
-		})
-
-		Convey("Should not return no data if both conditions have no data and using OR", func() {
-			context := NewEvalContext(context.TODO(), &Rule{
-				Conditions: []Condition{
-					&conditionStub{operator: "or", noData: true},
-					&conditionStub{operator: "or", noData: false},
-				},
-			})
+			}, &validations.OSSPluginRequestValidator{})
 
 			handler.Eval(context)
 			So(context.NoDataFound, ShouldBeTrue)
 		})
 
-		Convey("EvalHandler can replace alert state based for errors and no_data", func() {
-			ctx := NewEvalContext(context.TODO(), &Rule{Conditions: []Condition{&conditionStub{firing: true}}})
-			dummieError := fmt.Errorf("dummie error")
-			Convey("Should update alert state", func() {
+		Convey("Should return no data if at least one condition has no data and using OR", func() {
+			context := NewEvalContext(context.TODO(), &Rule{
+				Conditions: []Condition{
+					&conditionStub{operator: "or", noData: true},
+					&conditionStub{operator: "or", noData: false},
+				},
+			}, &validations.OSSPluginRequestValidator{})
 
-				Convey("ok -> alerting", func() {
-					ctx.PrevAlertState = models.AlertStateOK
-					ctx.Firing = true
-
-					So(handler.getNewState(ctx), ShouldEqual, models.AlertStateAlerting)
-				})
-
-				Convey("ok -> error(alerting)", func() {
-					ctx.PrevAlertState = models.AlertStateOK
-					ctx.Error = dummieError
-					ctx.Rule.ExecutionErrorState = models.ExecutionErrorSetAlerting
-
-					ctx.Rule.State = handler.getNewState(ctx)
-					So(ctx.Rule.State, ShouldEqual, models.AlertStateAlerting)
-				})
-
-				Convey("ok -> error(keep_last)", func() {
-					ctx.PrevAlertState = models.AlertStateOK
-					ctx.Error = dummieError
-					ctx.Rule.ExecutionErrorState = models.ExecutionErrorKeepState
-
-					ctx.Rule.State = handler.getNewState(ctx)
-					So(ctx.Rule.State, ShouldEqual, models.AlertStateOK)
-				})
-
-				Convey("pending -> error(keep_last)", func() {
-					ctx.PrevAlertState = models.AlertStatePending
-					ctx.Error = dummieError
-					ctx.Rule.ExecutionErrorState = models.ExecutionErrorKeepState
-
-					ctx.Rule.State = handler.getNewState(ctx)
-					So(ctx.Rule.State, ShouldEqual, models.AlertStatePending)
-				})
-
-				Convey("ok -> no_data(alerting)", func() {
-					ctx.PrevAlertState = models.AlertStateOK
-					ctx.Rule.NoDataState = models.NoDataSetAlerting
-					ctx.NoDataFound = true
-
-					ctx.Rule.State = handler.getNewState(ctx)
-					So(ctx.Rule.State, ShouldEqual, models.AlertStateAlerting)
-				})
-
-				Convey("ok -> no_data(keep_last)", func() {
-					ctx.PrevAlertState = models.AlertStateOK
-					ctx.Rule.NoDataState = models.NoDataKeepState
-					ctx.NoDataFound = true
-
-					ctx.Rule.State = handler.getNewState(ctx)
-					So(ctx.Rule.State, ShouldEqual, models.AlertStateOK)
-				})
-
-				Convey("pending -> no_data(keep_last)", func() {
-					ctx.PrevAlertState = models.AlertStatePending
-					ctx.Rule.NoDataState = models.NoDataKeepState
-					ctx.NoDataFound = true
-
-					ctx.Rule.State = handler.getNewState(ctx)
-					So(ctx.Rule.State, ShouldEqual, models.AlertStatePending)
-				})
-			})
+			handler.Eval(context)
+			So(context.NoDataFound, ShouldBeTrue)
 		})
 	})
 }

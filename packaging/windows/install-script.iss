@@ -1,7 +1,7 @@
 #define MyAppID "{5FFA65A5-D4CF-4E26-9AC0-1615E3895B1E}"
 #define MyAppName "AdRem GrafCrunch Server"
-#define MyAppVersion "11.0.0.5247"
-#define FileVersion "11.0.0.5247"
+#define MyAppVersion "12.0.0.6355"
+#define FileVersion "12.0.0.6355"
 #define MyAppPublisher "AdRem Software, Inc. New York, NY"
 #define MyAppURL "http://www.adremsoft.com/"
 #define MyAppIcon "icon.ico"
@@ -50,13 +50,13 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-AppCopyright=2020 (c) AdRem Software Inc., all rights reserved
+AppCopyright=2022 (c) AdRem Software Inc., all rights reserved
 VersionInfoVersion={#FileVersion}
 LicenseFile={#LICENSE}
-DefaultDirName={pf64}\AdRem\GrafCrunch
+DefaultDirName={commonpf64}\AdRem\GrafCrunch
 DefaultGroupName={#MyAppGroupName}
 OutputDir=release
-OutputBaseFilename=NC11GrafCrunch
+OutputBaseFilename=NC12GrafCrunch
 SetupIconFile={#MyAppIcon}
 UninstallDisplayIcon={app}\{#MyAppIcon}
 SignedUninstaller=yes
@@ -100,14 +100,21 @@ Source: {#MyAppIcon}; DestDir: "{app}"; Flags: ignoreversion
 Source: {#LICENSE}; DestDir: "{app}"; Flags: ignoreversion
 Source: {#NOTICE}; DestDir: "{app}"; Flags: ignoreversion
 
-Source: "GrafCrunchGuard\Win64\Release\GrafCrunchGuard.exe"; DestDir: "{app}\bin\"; DestName: "GCGuard.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "RunGrafCrunch\Win64\Release\RunGrafCrunch.exe"; DestDir: "{app}\bin\"; DestName: "GCRun.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\bin\grafana-server.exe"; DestDir: "{app}\bin\"; DestName: "GCServer.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\bin\grafana-cli.exe"; DestDir: "{app}\bin\"; DestName: "grafana-cli.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\conf\*"; DestDir: "{app}\conf\"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\data\plugins\adremsoft-netcrunch-app\dist\*"; DestDir: "{#GrafCrunchProgramData}\plugins\adremsoft-netcrunch-app\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\public\*"; DestDir: "{app}\public\"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "dest\tools\*"; DestDir: "{app}\tools\"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "GrafCrunchGuard\Win64\Release\GrafCrunchGuard.exe"; DestDir: "{app}\bin\"; DestName: "GCGuard.exe"; Flags: ignoreversion 
+Source: "RunGrafCrunch\Win64\Release\RunGrafCrunch.exe"; DestDir: "{app}\bin\"; DestName: "GCRun.exe"; Flags: ignoreversion 
+Source: "..\..\bin\grafana-server.exe"; DestDir: "{app}\bin\"; DestName: "GCServer.exe"; Flags: ignoreversion 
+Source: "..\..\bin\windows-amd64\grafana-cli.exe"; DestDir: "{app}\bin\"; DestName: "grafana-cli.exe"; Flags: ignoreversion 
+Source: "..\..\conf\*"; DestDir: "{app}\conf\"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\data\plugins\adremsoft-netcrunch-app\dist\*"; DestDir: "{#GrafCrunchProgramData}\plugins\adremsoft-netcrunch-app\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\app\*"; DestDir: "{app}\public\app"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\build\*"; DestDir: "{app}\public\build"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\dashboards\*"; DestDir: "{app}\public\dashboards"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\emails\*"; DestDir: "{app}\public\emails"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\fonts\*"; DestDir: "{app}\public\fonts"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\img\*"; DestDir: "{app}\public\img"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\views\*"; DestDir: "{app}\public\views"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\vendor\*"; DestDir: "{app}\public\vendor"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\public\robots.txt"; DestDir: "{app}\public"; Flags: ignoreversion 
 Source: "{#GrafCrunchClientURL}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

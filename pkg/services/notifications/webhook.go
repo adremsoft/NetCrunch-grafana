@@ -3,7 +3,9 @@ package notifications
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -11,24 +13,26 @@ import (
 
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/grafana/grafana/pkg/log"
 	"github.com/grafana/grafana/pkg/util"
 )
 
 type Webhook struct {
-	Url        string
-	User       string
-	Password   string
-	Body       string
-	HttpMethod string
-	HttpHeader map[string]string
+	Url         string
+	User        string
+	Password    string
+	Body        string
+	HttpMethod  string
+	HttpHeader  map[string]string
+	ContentType string
 }
 
 var netTransport = &http.Transport{
+	TLSClientConfig: &tls.Config{
+		Renegotiation: tls.RenegotiateFreelyAsClient,
+	},
 	Proxy: http.ProxyFromEnvironment,
 	Dial: (&net.Dialer{
-		Timeout:   30 * time.Second,
-		DualStack: true,
+		Timeout: 30 * time.Second,
 	}).Dial,
 	TLSHandshakeTimeout: 5 * time.Second,
 }
@@ -37,35 +41,15 @@ var netClient = &http.Client{
 	Transport: netTransport,
 }
 
-var (
-	webhookQueue chan *Webhook
-	webhookLog   log.Logger
-)
-
-func initWebhookQueue() {
-	webhookLog = log.New("notifications.webhook")
-	webhookQueue = make(chan *Webhook, 10)
-	go processWebhookQueue()
-}
-
-func processWebhookQueue() {
-	for {
-		select {
-		case webhook := <-webhookQueue:
-			err := sendWebRequestSync(context.Background(), webhook)
-
-			if err != nil {
-				webhookLog.Error("Failed to send webrequest ", "error", err)
-			}
-		}
-	}
-}
-
-func sendWebRequestSync(ctx context.Context, webhook *Webhook) error {
-	webhookLog.Debug("Sending webhook", "url", webhook.Url, "http method", webhook.HttpMethod)
+func (ns *NotificationService) sendWebRequestSync(ctx context.Context, webhook *Webhook) error {
+	ns.log.Debug("Sending webhook", "url", webhook.Url, "http method", webhook.HttpMethod)
 
 	if webhook.HttpMethod == "" {
 		webhook.HttpMethod = http.MethodPost
+	}
+
+	if webhook.HttpMethod != http.MethodPost && webhook.HttpMethod != http.MethodPut {
+		return fmt.Errorf("webhook only supports HTTP methods PUT or POST")
 	}
 
 	request, err := http.NewRequest(webhook.HttpMethod, webhook.Url, bytes.NewReader([]byte(webhook.Body)))
@@ -73,10 +57,15 @@ func sendWebRequestSync(ctx context.Context, webhook *Webhook) error {
 		return err
 	}
 
-	request.Header.Add("Content-Type", "application/json")
-	request.Header.Add("User-Agent", "Grafana")
+	if webhook.ContentType == "" {
+		webhook.ContentType = "application/json"
+	}
+
+	request.Header.Set("Content-Type", webhook.ContentType)
+	request.Header.Set("User-Agent", "Grafana")
+
 	if webhook.User != "" && webhook.Password != "" {
-		request.Header.Add("Authorization", util.GetBasicAuthHeader(webhook.User, webhook.Password))
+		request.Header.Set("Authorization", util.GetBasicAuthHeader(webhook.User, webhook.Password))
 	}
 
 	for k, v := range webhook.HttpHeader {
@@ -87,21 +76,26 @@ func sendWebRequestSync(ctx context.Context, webhook *Webhook) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			ns.log.Warn("Failed to close response body", "err", err)
+		}
+	}()
 
 	if resp.StatusCode/100 == 2 {
+		ns.log.Debug("Webhook succeeded", "url", webhook.Url, "statuscode", resp.Status)
+		// flushing the body enables the transport to reuse the same connection
+		if _, err := io.Copy(ioutil.Discard, resp.Body); err != nil {
+			ns.log.Error("Failed to copy resp.Body to ioutil.Discard", "err", err)
+		}
 		return nil
 	}
 
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 
-	webhookLog.Debug("Webhook failed", "statuscode", resp.Status, "body", string(body))
+	ns.log.Debug("Webhook failed", "url", webhook.Url, "statuscode", resp.Status, "body", string(body))
 	return fmt.Errorf("Webhook response status %v", resp.Status)
-}
-
-var addToWebhookQueue = func(msg *Webhook) {
-	webhookQueue <- msg
 }

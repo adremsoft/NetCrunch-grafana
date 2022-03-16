@@ -55,19 +55,18 @@
   margin: 2px 0 0; // override default ul
   list-style: none;
   background-color: $dropdownBackground;
-  border: 1px solid #ccc; // Fallback for IE7-8
   border: 1px solid $dropdownBorder;
   text-align: left;
 
   // Aligns the dropdown menu to right
-  &.pull-right {
+  &.pull-left {
     right: 0;
     left: auto;
   }
 
   .divider {
-    height: 0.1rem;
-    margin: 0.5rem 0; // 8px 1px
+    height: 1px;
+    margin: $space-sm 0; // 8px 1px
     overflow: hidden;
     background-color: $dropdownDividerTop;
     border-bottom: 1px solid $dropdownDividerBottom;
@@ -93,7 +92,9 @@
       }
 
       .gicon {
-        opacity: 0.9;
+        opacity: 0.7;
+        width: 18px;
+        height: 14px;
       }
     }
   }
@@ -109,7 +110,6 @@
     background: $menu-dropdown-bg;
     box-shadow: $menu-dropdown-shadow;
     margin-top: 0px;
-    border: none;
 
     > li > a {
       display: flex;
@@ -183,6 +183,11 @@
     display: block;
   }
 
+  & > .dropdown > .dropdown-menu {
+    // Panel menu. TODO: See if we can merge this with above
+    display: block;
+  }
+
   &.cascade-open {
     .dropdown-menu {
       display: block;
@@ -233,6 +238,7 @@
 .dropdown-submenu {
   position: relative;
 }
+
 // Default dropdowns
 .dropdown-submenu > .dropdown-menu {
   top: 0;
@@ -253,21 +259,17 @@
   margin-bottom: -2px;
   @include border-radius(5px 5px 5px 0);
 }
-
-// Caret to indicate there is a submenu
-.dropdown-submenu > a::after {
-  display: block;
-  content: ' ';
-  float: right;
-  width: 0;
-  height: 0;
-  border-color: transparent;
-  border-style: solid;
-  border-width: 5px 0 5px 5px;
-  border-left-color: $text-color-weak;
-  margin-top: 5px;
-  margin-right: -12px;
-}
+// .dropdown-submenu > a::after {
+//   position: absolute;
+//   top: 35%;
+//   right: $space-sm;
+//   background-color: transparent;
+//   color: $text-color-weak;
+//   font: normal normal normal $font-size-sm/1 FontAwesome;
+//   content: '\f0da';
+//   pointer-events: none;
+//   font-size: 11px;
+// }
 .dropdown-submenu:hover > a::after {
   border-left-color: $dropdownLinkColorHover;
 }
@@ -276,14 +278,19 @@
 .dropdown-submenu.pull-left {
   // Undo the float
   // Yes, this is awkward since .pull-left adds a float, but it sticks to our conventions elsewhere.
-  float: none;
+  float: none !important;
 
   // Positioning the submenu
   > .dropdown-menu {
     left: -100%;
-    margin-left: 10px;
+    width: 100%;
+    margin-left: 2px;
     @include border-radius(6px 0 6px 6px);
   }
+}
+
+.dropdown-submenu.pull-right {
+  float: none !important;
 }
 
 // Tweak nav headers
@@ -298,7 +305,6 @@
 // ---------
 .typeahead {
   z-index: $zindex-typeahead;
-  margin-top: 2px; // give it some space to breathe
 }
 
 .dropdown-menu-item-shortcut {
@@ -306,14 +312,6 @@
   margin-left: $spacer;
   color: $text-muted;
   min-width: 47px;
-
-  &::before {
-    font-family: FontAwesome;
-    width: 2rem;
-    display: inline-block;
-    text-align: center;
-    content: '\f11c';
-  }
 }
 
 .dropdown-menu.dropdown-menu--new {

@@ -2,6 +2,7 @@ package prometheus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,20 +13,20 @@ import (
 	"net/http"
 
 	"github.com/grafana/grafana/pkg/components/null"
-	"github.com/grafana/grafana/pkg/log"
+	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/tsdb"
-	api "github.com/prometheus/client_golang/api"
+	"github.com/prometheus/client_golang/api"
 	apiv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 )
 
 type PrometheusExecutor struct {
-	Transport *http.Transport
+	Transport http.RoundTripper
 }
 
 type basicAuthTransport struct {
-	*http.Transport
+	Transport http.RoundTripper
 
 	username string
 	password string
@@ -70,7 +71,7 @@ func (e *PrometheusExecutor) getClient(dsInfo *models.DataSource) (apiv1.API, er
 		cfg.RoundTripper = basicAuthTransport{
 			Transport: e.Transport,
 			username:  dsInfo.BasicAuthUser,
-			password:  dsInfo.BasicAuthPassword,
+			password:  dsInfo.DecryptedBasicAuthPassword(),
 		}
 	}
 
@@ -92,12 +93,12 @@ func (e *PrometheusExecutor) Query(ctx context.Context, dsInfo *models.DataSourc
 		return nil, err
 	}
 
-	querys, err := parseQuery(dsInfo, tsdbQuery.Queries, tsdbQuery)
+	queries, err := parseQuery(dsInfo, tsdbQuery.Queries, tsdbQuery)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, query := range querys {
+	for _, query := range queries {
 		timeRange := apiv1.Range{
 			Start: query.Start,
 			End:   query.End,
@@ -108,11 +109,11 @@ func (e *PrometheusExecutor) Query(ctx context.Context, dsInfo *models.DataSourc
 
 		span, ctx := opentracing.StartSpanFromContext(ctx, "alerting.prometheus")
 		span.SetTag("expr", query.Expr)
-		span.SetTag("start_unixnano", int64(query.Start.UnixNano()))
-		span.SetTag("stop_unixnano", int64(query.End.UnixNano()))
+		span.SetTag("start_unixnano", query.Start.UnixNano())
+		span.SetTag("stop_unixnano", query.End.UnixNano())
 		defer span.Finish()
 
-		value, err := client.QueryRange(ctx, query.Expr, timeRange)
+		value, _, err := client.QueryRange(ctx, query.Expr, timeRange)
 
 		if err != nil {
 			return nil, err
@@ -140,8 +141,7 @@ func formatLegend(metric model.Metric, query *PrometheusQuery) string {
 		if val, exists := metric[model.LabelName(labelName)]; exists {
 			return []byte(val)
 		}
-
-		return in
+		return []byte{}
 	})
 
 	return string(result)
@@ -194,13 +194,14 @@ func parseResponse(value model.Value, query *PrometheusQuery) (*tsdb.QueryResult
 
 	data, ok := value.(model.Matrix)
 	if !ok {
-		return queryRes, fmt.Errorf("Unsupported result format: %s", value.Type().String())
+		return queryRes, fmt.Errorf("unsupported result format: %q", value.Type().String())
 	}
 
 	for _, v := range data {
 		series := tsdb.TimeSeries{
-			Name: formatLegend(v.Metric, query),
-			Tags: map[string]string{},
+			Name:   formatLegend(v.Metric, query),
+			Tags:   make(map[string]string, len(v.Metric)),
+			Points: make([]tsdb.TimePoint, 0, len(v.Values)),
 		}
 
 		for k, v := range v.Metric {
@@ -215,4 +216,19 @@ func parseResponse(value model.Value, query *PrometheusQuery) (*tsdb.QueryResult
 	}
 
 	return queryRes, nil
+}
+
+// IsAPIError returns whether err is or wraps a Prometheus error.
+func IsAPIError(err error) bool {
+	// Check if the right error type is in err's chain.
+	var e *apiv1.Error
+	return errors.As(err, &e)
+}
+
+func ConvertAPIError(err error) error {
+	var e *apiv1.Error
+	if errors.As(err, &e) {
+		return fmt.Errorf("%s: %s", e.Msg, e.Detail)
+	}
+	return err
 }

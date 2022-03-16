@@ -1,69 +1,135 @@
-import _ from 'lodash';
-import React from 'react';
-import { Async } from 'react-select';
-import { TagValue } from './TagValue';
+// Libraries
+import React, { FC } from 'react';
+import { css } from 'emotion';
+// @ts-ignore
+import { components } from '@torkelo/react-select';
+import { AsyncSelect, stylesFactory, useTheme, resetSelectStyles, Icon } from '@grafana/ui';
+import { escapeStringForRegex, GrafanaTheme } from '@grafana/data';
+// Components
 import { TagOption } from './TagOption';
+import { TagBadge } from './TagBadge';
 
-export interface IProps {
+export interface TermCount {
+  term: string;
+  count: number;
+}
+
+export interface Props {
+  /** Do not show selected values inside Select. Useful when the values need to be shown in some other components */
+  hideValues?: boolean;
+  isClearable?: boolean;
+  onChange: (tags: string[]) => void;
+  placeholder?: string;
+  tagOptions: () => Promise<TermCount[]>;
   tags: string[];
-  tagOptions: () => any;
-  onSelect: (tag: string) => void;
+  width?: number;
 }
 
-export class TagFilter extends React.Component<IProps, any> {
-  inlineTags: boolean;
+const filterOption = (option: any, searchQuery: string) => {
+  const regex = RegExp(escapeStringForRegex(searchQuery), 'i');
+  return regex.test(option.value);
+};
 
-  constructor(props) {
-    super(props);
+export const TagFilter: FC<Props> = ({
+  hideValues,
+  isClearable,
+  onChange,
+  placeholder = 'Filter by tag',
+  tagOptions,
+  tags,
+  width,
+}) => {
+  const theme = useTheme();
+  const styles = getStyles(theme);
 
-    this.searchTags = this.searchTags.bind(this);
-    this.onChange = this.onChange.bind(this);
-    this.onTagRemove = this.onTagRemove.bind(this);
-  }
-
-  searchTags(query) {
-    return this.props.tagOptions().then(options => {
-      const tags = _.map(options, tagOption => {
-        return { value: tagOption.term, label: tagOption.term, count: tagOption.count };
-      });
-      return { options: tags };
+  const onLoadOptions = (query: string) => {
+    return tagOptions().then((options) => {
+      return options.map((option) => ({
+        value: option.term,
+        label: option.term,
+        count: option.count,
+      }));
     });
-  }
+  };
 
-  onChange(newTags) {
-    this.props.onSelect(newTags);
-  }
+  const onTagChange = (newTags: any[]) => {
+    // On remove with 1 item returns null, so we need to make sure it's an empty array in that case
+    // https://github.com/JedWatson/react-select/issues/3632
+    onChange((newTags || []).map((tag) => tag.value));
+  };
 
-  onTagRemove(tag) {
-    let newTags = _.without(this.props.tags, tag.label);
-    newTags = _.map(newTags, tag => {
-      return { value: tag };
-    });
-    this.props.onSelect(newTags);
-  }
+  const value = tags.map((tag) => ({ value: tag, label: tag, count: 0 }));
 
-  render() {
-    let selectOptions = {
-      loadOptions: this.searchTags,
-      onChange: this.onChange,
-      value: this.props.tags,
-      multi: true,
-      className: 'gf-form-input gf-form-input--form-dropdown',
-      placeholder: 'Tags',
-      loadingPlaceholder: 'Loading...',
-      noResultsText: 'No tags found',
-      optionComponent: TagOption,
-    };
+  const selectOptions = {
+    defaultOptions: true,
+    filterOption,
+    getOptionLabel: (i: any) => i.label,
+    getOptionValue: (i: any) => i.value,
+    isMulti: true,
+    loadOptions: onLoadOptions,
+    loadingMessage: 'Loading...',
+    noOptionsMessage: 'No tags found',
+    onChange: onTagChange,
+    placeholder,
+    styles: resetSelectStyles(),
+    value,
+    width,
+    components: {
+      Option: TagOption,
+      MultiValueLabel: (): any => {
+        return null; // We want the whole tag to be clickable so we use MultiValueRemove instead
+      },
+      MultiValueRemove(props: any) {
+        const { data } = props;
 
-    selectOptions['valueComponent'] = TagValue;
+        return (
+          <components.MultiValueRemove {...props}>
+            <TagBadge key={data.label} label={data.label} removeIcon={true} count={data.count} />
+          </components.MultiValueRemove>
+        );
+      },
+      MultiValueContainer: hideValues ? (): any => null : components.MultiValueContainer,
+    },
+  };
 
-    return (
-      <div className="gf-form gf-form--has-input-icon gf-form--grow">
-        <div className="tag-filter">
-          <Async {...selectOptions} />
-        </div>
-        <i className="gf-form-input-icon fa fa-tag" />
-      </div>
-    );
-  }
-}
+  return (
+    <div className={styles.tagFilter}>
+      {isClearable && tags.length > 0 && (
+        <span className={styles.clear} onClick={() => onTagChange([])}>
+          Clear tags
+        </span>
+      )}
+      <AsyncSelect {...selectOptions} prefix={<Icon name="tag-alt" />} aria-label="Tag filter" />
+    </div>
+  );
+};
+
+TagFilter.displayName = 'TagFilter';
+
+const getStyles = stylesFactory((theme: GrafanaTheme) => {
+  return {
+    tagFilter: css`
+      position: relative;
+      min-width: 180px;
+      flex-grow: 1;
+
+      .label-tag {
+        margin-left: 6px;
+        cursor: pointer;
+      }
+    `,
+    clear: css`
+      text-decoration: underline;
+      font-size: 12px;
+      position: absolute;
+      top: -22px;
+      right: 0;
+      cursor: pointer;
+      color: ${theme.colors.textWeak};
+
+      &:hover {
+        color: ${theme.colors.textStrong};
+      }
+    `,
+  };
+});

@@ -9,9 +9,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana/pkg/util/errutil"
 )
 
-func (e *CloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryContext *tsdb.TsdbQuery) (*tsdb.Response, error) {
+func (e *cloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryContext *tsdb.TsdbQuery) (*tsdb.Response, error) {
 	result := &tsdb.Response{
 		Results: make(map[string]*tsdb.QueryResult),
 	}
@@ -24,7 +25,7 @@ func (e *CloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryCo
 	namespace := parameters.Get("namespace").MustString("")
 	metricName := parameters.Get("metricName").MustString("")
 	dimensions := parameters.Get("dimensions").MustMap()
-	statistics, extendedStatistics, err := parseStatistics(parameters)
+	statistics, err := parseStatistics(parameters)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +36,7 @@ func (e *CloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryCo
 	actionPrefix := parameters.Get("actionPrefix").MustString("")
 	alarmNamePrefix := parameters.Get("alarmNamePrefix").MustString("")
 
-	svc, err := e.getClient(region)
+	cli, err := e.getCWClient(region)
 	if err != nil {
 		return nil, err
 	}
@@ -47,23 +48,27 @@ func (e *CloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryCo
 			ActionPrefix:    aws.String(actionPrefix),
 			AlarmNamePrefix: aws.String(alarmNamePrefix),
 		}
-		resp, err := svc.DescribeAlarms(params)
+		resp, err := cli.DescribeAlarms(params)
 		if err != nil {
-			return nil, errors.New("Failed to call cloudwatch:DescribeAlarms")
+			return nil, errutil.Wrap("failed to call cloudwatch:DescribeAlarms", err)
 		}
-		alarmNames = filterAlarms(resp, namespace, metricName, dimensions, statistics, extendedStatistics, period)
+		alarmNames = filterAlarms(resp, namespace, metricName, dimensions, statistics, period)
 	} else {
 		if region == "" || namespace == "" || metricName == "" || len(statistics) == 0 {
-			return result, nil
+			return result, errors.New("invalid annotations query")
 		}
 
 		var qd []*cloudwatch.Dimension
 		for k, v := range dimensions {
-			if vv, ok := v.(string); ok {
-				qd = append(qd, &cloudwatch.Dimension{
-					Name:  aws.String(k),
-					Value: aws.String(vv),
-				})
+			if vv, ok := v.([]interface{}); ok {
+				for _, vvv := range vv {
+					if vvvv, ok := vvv.(string); ok {
+						qd = append(qd, &cloudwatch.Dimension{
+							Name:  aws.String(k),
+							Value: aws.String(vvvv),
+						})
+					}
+				}
 			}
 		}
 		for _, s := range statistics {
@@ -72,27 +77,11 @@ func (e *CloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryCo
 				MetricName: aws.String(metricName),
 				Dimensions: qd,
 				Statistic:  aws.String(s),
-				Period:     aws.Int64(int64(period)),
+				Period:     aws.Int64(period),
 			}
-			resp, err := svc.DescribeAlarmsForMetric(params)
+			resp, err := cli.DescribeAlarmsForMetric(params)
 			if err != nil {
-				return nil, errors.New("Failed to call cloudwatch:DescribeAlarmsForMetric")
-			}
-			for _, alarm := range resp.MetricAlarms {
-				alarmNames = append(alarmNames, alarm.AlarmName)
-			}
-		}
-		for _, s := range extendedStatistics {
-			params := &cloudwatch.DescribeAlarmsForMetricInput{
-				Namespace:         aws.String(namespace),
-				MetricName:        aws.String(metricName),
-				Dimensions:        qd,
-				ExtendedStatistic: aws.String(s),
-				Period:            aws.Int64(int64(period)),
-			}
-			resp, err := svc.DescribeAlarmsForMetric(params)
-			if err != nil {
-				return nil, errors.New("Failed to call cloudwatch:DescribeAlarmsForMetric")
+				return nil, errutil.Wrap("failed to call cloudwatch:DescribeAlarmsForMetric", err)
 			}
 			for _, alarm := range resp.MetricAlarms {
 				alarmNames = append(alarmNames, alarm.AlarmName)
@@ -117,9 +106,9 @@ func (e *CloudWatchExecutor) executeAnnotationQuery(ctx context.Context, queryCo
 			EndDate:    aws.Time(endTime),
 			MaxRecords: aws.Int64(100),
 		}
-		resp, err := svc.DescribeAlarmHistory(params)
+		resp, err := cli.DescribeAlarmHistory(params)
 		if err != nil {
-			return nil, errors.New("Failed to call cloudwatch:DescribeAlarmHistory")
+			return nil, errutil.Wrap("failed to call cloudwatch:DescribeAlarmHistory", err)
 		}
 		for _, history := range resp.AlarmHistoryItems {
 			annotation := make(map[string]string)
@@ -158,7 +147,7 @@ func transformAnnotationToTable(data []map[string]string, result *tsdb.QueryResu
 	result.Meta.Set("rowCount", len(data))
 }
 
-func filterAlarms(alarms *cloudwatch.DescribeAlarmsOutput, namespace string, metricName string, dimensions map[string]interface{}, statistics []string, extendedStatistics []string, period int64) []*string {
+func filterAlarms(alarms *cloudwatch.DescribeAlarmsOutput, namespace string, metricName string, dimensions map[string]interface{}, statistics []string, period int64) []*string {
 	alarmNames := make([]*string, 0)
 
 	for _, alarm := range alarms.MetricAlarms {
@@ -170,14 +159,14 @@ func filterAlarms(alarms *cloudwatch.DescribeAlarmsOutput, namespace string, met
 		}
 
 		match := true
-		if len(dimensions) == 0 {
-			// all match
-		} else if len(alarm.Dimensions) != len(dimensions) {
-			match = false
-		} else {
-			for _, d := range alarm.Dimensions {
-				if _, ok := dimensions[*d.Name]; !ok {
-					match = false
+		if len(dimensions) != 0 {
+			if len(alarm.Dimensions) != len(dimensions) {
+				match = false
+			} else {
+				for _, d := range alarm.Dimensions {
+					if _, ok := dimensions[*d.Name]; !ok {
+						match = false
+					}
 				}
 			}
 		}
@@ -190,18 +179,7 @@ func filterAlarms(alarms *cloudwatch.DescribeAlarmsOutput, namespace string, met
 			for _, s := range statistics {
 				if *alarm.Statistic == s {
 					found = true
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-
-		if len(extendedStatistics) != 0 {
-			found := false
-			for _, s := range extendedStatistics {
-				if *alarm.Statistic == s {
-					found = true
+					break
 				}
 			}
 			if !found {

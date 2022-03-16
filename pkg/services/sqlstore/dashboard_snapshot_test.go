@@ -1,156 +1,172 @@
+// +build integration
+
 package sqlstore
 
 import (
 	"testing"
 	"time"
 
-	"github.com/go-xorm/xorm"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
 func TestDashboardSnapshotDBAccess(t *testing.T) {
+	InitTestDB(t)
 
-	Convey("Testing DashboardSnapshot data access", t, func() {
-		InitTestDB(t)
+	origSecret := setting.SecretKey
+	setting.SecretKey = "dashboard_snapshot_testing"
+	t.Cleanup(func() {
+		setting.SecretKey = origSecret
+	})
 
-		Convey("Given saved snapshot", func() {
-			cmd := m.CreateDashboardSnapshotCommand{
-				Key: "hej",
+	t.Run("Given saved snapshot", func(t *testing.T) {
+		cmd := models.CreateDashboardSnapshotCommand{
+			Key: "hej",
+			Dashboard: simplejson.NewFromAny(map[string]interface{}{
+				"hello": "mupp",
+			}),
+			UserId: 1000,
+			OrgId:  1,
+		}
+		err := CreateDashboardSnapshot(&cmd)
+		require.NoError(t, err)
+
+		t.Run("Should be able to get snapshot by key", func(t *testing.T) {
+			query := models.GetDashboardSnapshotQuery{Key: "hej"}
+			err := GetDashboardSnapshot(&query)
+			require.NoError(t, err)
+
+			assert.NotNil(t, query.Result)
+
+			dashboard, err := query.Result.DashboardJSON()
+			require.NoError(t, err)
+			assert.Equal(t, "mupp", dashboard.Get("hello").MustString())
+		})
+
+		t.Run("And the user has the admin role", func(t *testing.T) {
+			query := models.GetDashboardSnapshotsQuery{
+				OrgId:        1,
+				SignedInUser: &models.SignedInUser{OrgRole: models.ROLE_ADMIN},
+			}
+			err := SearchDashboardSnapshots(&query)
+			require.NoError(t, err)
+
+			t.Run("Should return all the snapshots", func(t *testing.T) {
+				assert.NotNil(t, query.Result)
+				assert.Len(t, query.Result, 1)
+			})
+		})
+
+		t.Run("And the user has the editor role and has created a snapshot", func(t *testing.T) {
+			query := models.GetDashboardSnapshotsQuery{
+				OrgId:        1,
+				SignedInUser: &models.SignedInUser{OrgRole: models.ROLE_EDITOR, UserId: 1000},
+			}
+			err := SearchDashboardSnapshots(&query)
+			require.NoError(t, err)
+
+			t.Run("Should return all the snapshots", func(t *testing.T) {
+				require.NotNil(t, query.Result)
+				assert.Len(t, query.Result, 1)
+			})
+		})
+
+		t.Run("And the user has the editor role and has not created any snapshot", func(t *testing.T) {
+			query := models.GetDashboardSnapshotsQuery{
+				OrgId:        1,
+				SignedInUser: &models.SignedInUser{OrgRole: models.ROLE_EDITOR, UserId: 2},
+			}
+			err := SearchDashboardSnapshots(&query)
+			require.NoError(t, err)
+
+			t.Run("Should not return any snapshots", func(t *testing.T) {
+				require.NotNil(t, query.Result)
+				assert.Empty(t, query.Result)
+			})
+		})
+
+		t.Run("And the user is anonymous", func(t *testing.T) {
+			cmd := models.CreateDashboardSnapshotCommand{
+				Key:       "strangesnapshotwithuserid0",
+				DeleteKey: "adeletekey",
 				Dashboard: simplejson.NewFromAny(map[string]interface{}{
 					"hello": "mupp",
 				}),
-				UserId: 1000,
+				UserId: 0,
 				OrgId:  1,
 			}
 			err := CreateDashboardSnapshot(&cmd)
-			So(err, ShouldBeNil)
+			require.NoError(t, err)
 
-			Convey("Should be able to get snapshot by key", func() {
-				query := m.GetDashboardSnapshotQuery{Key: "hej"}
-				err = GetDashboardSnapshot(&query)
-				So(err, ShouldBeNil)
-
-				So(query.Result, ShouldNotBeNil)
-				So(query.Result.Dashboard.Get("hello").MustString(), ShouldEqual, "mupp")
-			})
-
-			Convey("And the user has the admin role", func() {
-				Convey("Should return all the snapshots", func() {
-					query := m.GetDashboardSnapshotsQuery{
-						OrgId:        1,
-						SignedInUser: &m.SignedInUser{OrgRole: m.ROLE_ADMIN},
-					}
-					err := SearchDashboardSnapshots(&query)
-					So(err, ShouldBeNil)
-
-					So(query.Result, ShouldNotBeNil)
-					So(len(query.Result), ShouldEqual, 1)
-				})
-			})
-
-			Convey("And the user has the editor role and has created a snapshot", func() {
-				Convey("Should return all the snapshots", func() {
-					query := m.GetDashboardSnapshotsQuery{
-						OrgId:        1,
-						SignedInUser: &m.SignedInUser{OrgRole: m.ROLE_EDITOR, UserId: 1000},
-					}
-					err := SearchDashboardSnapshots(&query)
-					So(err, ShouldBeNil)
-
-					So(query.Result, ShouldNotBeNil)
-					So(len(query.Result), ShouldEqual, 1)
-				})
-			})
-
-			Convey("And the user has the editor role and has not created any snapshot", func() {
-				Convey("Should not return any snapshots", func() {
-					query := m.GetDashboardSnapshotsQuery{
-						OrgId:        1,
-						SignedInUser: &m.SignedInUser{OrgRole: m.ROLE_EDITOR, UserId: 2},
-					}
-					err := SearchDashboardSnapshots(&query)
-					So(err, ShouldBeNil)
-
-					So(query.Result, ShouldNotBeNil)
-					So(len(query.Result), ShouldEqual, 0)
-				})
-			})
-
-			Convey("And the user is anonymous", func() {
-				cmd := m.CreateDashboardSnapshotCommand{
-					Key:       "strangesnapshotwithuserid0",
-					DeleteKey: "adeletekey",
-					Dashboard: simplejson.NewFromAny(map[string]interface{}{
-						"hello": "mupp",
-					}),
-					UserId: 0,
-					OrgId:  1,
+			t.Run("Should not return any snapshots", func(t *testing.T) {
+				query := models.GetDashboardSnapshotsQuery{
+					OrgId:        1,
+					SignedInUser: &models.SignedInUser{OrgRole: models.ROLE_EDITOR, IsAnonymous: true, UserId: 0},
 				}
-				err := CreateDashboardSnapshot(&cmd)
-				So(err, ShouldBeNil)
+				err := SearchDashboardSnapshots(&query)
+				require.NoError(t, err)
 
-				Convey("Should not return any snapshots", func() {
-					query := m.GetDashboardSnapshotsQuery{
-						OrgId:        1,
-						SignedInUser: &m.SignedInUser{OrgRole: m.ROLE_EDITOR, IsAnonymous: true, UserId: 0},
-					}
-					err := SearchDashboardSnapshots(&query)
-					So(err, ShouldBeNil)
-
-					So(query.Result, ShouldNotBeNil)
-					So(len(query.Result), ShouldEqual, 0)
-				})
+				require.NotNil(t, query.Result)
+				assert.Empty(t, query.Result)
 			})
+		})
+
+		t.Run("Should have encrypted dashboard data", func(t *testing.T) {
+			original, err := cmd.Dashboard.Encode()
+			require.NoError(t, err)
+
+			decrypted, err := cmd.Result.DashboardEncrypted.Decrypt()
+			require.NoError(t, err)
+
+			require.Equal(t, decrypted, original)
 		})
 	})
 }
 
 func TestDeleteExpiredSnapshots(t *testing.T) {
-	Convey("Testing dashboard snapshots clean up", t, func() {
-		x := InitTestDB(t)
+	sqlstore := InitTestDB(t)
 
+	t.Run("Testing dashboard snapshots clean up", func(t *testing.T) {
 		setting.SnapShotRemoveExpired = true
 
-		notExpiredsnapshot := createTestSnapshot(x, "key1", 1000)
-		createTestSnapshot(x, "key2", -1000)
-		createTestSnapshot(x, "key3", -1000)
+		nonExpiredSnapshot := createTestSnapshot(t, sqlstore, "key1", 48000)
+		createTestSnapshot(t, sqlstore, "key2", -1200)
+		createTestSnapshot(t, sqlstore, "key3", -1200)
 
-		Convey("Clean up old dashboard snapshots", func() {
-			err := DeleteExpiredSnapshots(&m.DeleteExpiredSnapshotsCommand{})
-			So(err, ShouldBeNil)
+		err := DeleteExpiredSnapshots(&models.DeleteExpiredSnapshotsCommand{})
+		require.NoError(t, err)
 
-			query := m.GetDashboardSnapshotsQuery{
-				OrgId:        1,
-				SignedInUser: &m.SignedInUser{OrgRole: m.ROLE_ADMIN},
-			}
-			err = SearchDashboardSnapshots(&query)
-			So(err, ShouldBeNil)
+		query := models.GetDashboardSnapshotsQuery{
+			OrgId:        1,
+			SignedInUser: &models.SignedInUser{OrgRole: models.ROLE_ADMIN},
+		}
+		err = SearchDashboardSnapshots(&query)
+		require.NoError(t, err)
 
-			So(len(query.Result), ShouldEqual, 1)
-			So(query.Result[0].Key, ShouldEqual, notExpiredsnapshot.Key)
-		})
+		assert.Len(t, query.Result, 1)
+		assert.Equal(t, nonExpiredSnapshot.Key, query.Result[0].Key)
 
-		Convey("Don't delete anything if there are no expired snapshots", func() {
-			err := DeleteExpiredSnapshots(&m.DeleteExpiredSnapshotsCommand{})
-			So(err, ShouldBeNil)
+		err = DeleteExpiredSnapshots(&models.DeleteExpiredSnapshotsCommand{})
+		require.NoError(t, err)
 
-			query := m.GetDashboardSnapshotsQuery{
-				OrgId:        1,
-				SignedInUser: &m.SignedInUser{OrgRole: m.ROLE_ADMIN},
-			}
-			SearchDashboardSnapshots(&query)
+		query = models.GetDashboardSnapshotsQuery{
+			OrgId:        1,
+			SignedInUser: &models.SignedInUser{OrgRole: models.ROLE_ADMIN},
+		}
+		err = SearchDashboardSnapshots(&query)
+		require.NoError(t, err)
 
-			So(len(query.Result), ShouldEqual, 1)
-		})
+		require.Len(t, query.Result, 1)
+		require.Equal(t, nonExpiredSnapshot.Key, query.Result[0].Key)
 	})
 }
 
-func createTestSnapshot(x *xorm.Engine, key string, expires int64) *m.DashboardSnapshot {
-	cmd := m.CreateDashboardSnapshotCommand{
+func createTestSnapshot(t *testing.T, sqlstore *SQLStore, key string, expires int64) *models.DashboardSnapshot {
+	cmd := models.CreateDashboardSnapshotCommand{
 		Key:       key,
 		DeleteKey: "delete" + key,
 		Dashboard: simplejson.NewFromAny(map[string]interface{}{
@@ -161,12 +177,14 @@ func createTestSnapshot(x *xorm.Engine, key string, expires int64) *m.DashboardS
 		Expires: expires,
 	}
 	err := CreateDashboardSnapshot(&cmd)
-	So(err, ShouldBeNil)
+	require.NoError(t, err)
 
 	// Set expiry date manually - to be able to create expired snapshots
-	expireDate := time.Now().Add(time.Second * time.Duration(expires))
-	_, err = x.Exec("update dashboard_snapshot set expires = ? where "+dialect.Quote("key")+" = ?", expireDate, key)
-	So(err, ShouldBeNil)
+	if expires < 0 {
+		expireDate := time.Now().Add(time.Second * time.Duration(expires))
+		_, err = sqlstore.engine.Exec("UPDATE dashboard_snapshot SET expires = ? WHERE id = ?", expireDate, cmd.Result.Id)
+		require.NoError(t, err)
+	}
 
 	return cmd.Result
 }

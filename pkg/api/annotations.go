@@ -1,46 +1,46 @@
 package api
 
 import (
+	"errors"
 	"strings"
-	"time"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
-	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/api/response"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/annotations"
 	"github.com/grafana/grafana/pkg/services/guardian"
 	"github.com/grafana/grafana/pkg/util"
 )
 
-func GetAnnotations(c *m.ReqContext) Response {
-
+func GetAnnotations(c *models.ReqContext) response.Response {
 	query := &annotations.ItemQuery{
-		From:        c.QueryInt64("from") / 1000,
-		To:          c.QueryInt64("to") / 1000,
+		From:        c.QueryInt64("from"),
+		To:          c.QueryInt64("to"),
 		OrgId:       c.OrgId,
+		UserId:      c.QueryInt64("userId"),
 		AlertId:     c.QueryInt64("alertId"),
 		DashboardId: c.QueryInt64("dashboardId"),
 		PanelId:     c.QueryInt64("panelId"),
 		Limit:       c.QueryInt64("limit"),
 		Tags:        c.QueryStrings("tags"),
 		Type:        c.Query("type"),
+		MatchAny:    c.QueryBool("matchAny"),
 	}
 
 	repo := annotations.GetRepository()
 
 	items, err := repo.Find(query)
 	if err != nil {
-		return ApiError(500, "Failed to get annotations", err)
+		return response.Error(500, "Failed to get annotations", err)
 	}
 
 	for _, item := range items {
 		if item.Email != "" {
 			item.AvatarUrl = dtos.GetGravatarUrl(item.Email)
 		}
-		item.Time = item.Time * 1000
 	}
 
-	return Json(200, items)
+	return response.JSON(200, items)
 }
 
 type CreateAnnotationError struct {
@@ -51,8 +51,8 @@ func (e *CreateAnnotationError) Error() string {
 	return e.message
 }
 
-func PostAnnotation(c *m.ReqContext, cmd dtos.PostAnnotationsCmd) Response {
-	if canSave, err := canSaveByDashboardId(c, cmd.DashboardId); err != nil || !canSave {
+func PostAnnotation(c *models.ReqContext, cmd dtos.PostAnnotationsCmd) response.Response {
+	if canSave, err := canSaveByDashboardID(c, cmd.DashboardId); err != nil || !canSave {
 		return dashboardGuardianResponse(err)
 	}
 
@@ -60,7 +60,7 @@ func PostAnnotation(c *m.ReqContext, cmd dtos.PostAnnotationsCmd) Response {
 
 	if cmd.Text == "" {
 		err := &CreateAnnotationError{"text field should not be empty"}
-		return ApiError(500, "Failed to save annotation", err)
+		return response.Error(400, "Failed to save annotation", err)
 	}
 
 	item := annotations.Item{
@@ -68,49 +68,23 @@ func PostAnnotation(c *m.ReqContext, cmd dtos.PostAnnotationsCmd) Response {
 		UserId:      c.UserId,
 		DashboardId: cmd.DashboardId,
 		PanelId:     cmd.PanelId,
-		Epoch:       cmd.Time / 1000,
+		Epoch:       cmd.Time,
+		EpochEnd:    cmd.TimeEnd,
 		Text:        cmd.Text,
 		Data:        cmd.Data,
 		Tags:        cmd.Tags,
 	}
 
-	if item.Epoch == 0 {
-		item.Epoch = time.Now().Unix()
-	}
-
 	if err := repo.Save(&item); err != nil {
-		return ApiError(500, "Failed to save annotation", err)
+		if errors.Is(err, annotations.ErrTimerangeMissing) {
+			return response.Error(400, "Failed to save annotation", err)
+		}
+		return response.Error(500, "Failed to save annotation", err)
 	}
 
 	startID := item.Id
 
-	// handle regions
-	if cmd.IsRegion {
-		item.RegionId = startID
-
-		if item.Data == nil {
-			item.Data = simplejson.New()
-		}
-
-		if err := repo.Update(&item); err != nil {
-			return ApiError(500, "Failed set regionId on annotation", err)
-		}
-
-		item.Id = 0
-		item.Epoch = cmd.TimeEnd / 1000
-
-		if err := repo.Save(&item); err != nil {
-			return ApiError(500, "Failed save annotation for region end time", err)
-		}
-
-		return Json(200, util.DynMap{
-			"message": "Annotation added",
-			"id":      startID,
-			"endId":   item.Id,
-		})
-	}
-
-	return Json(200, util.DynMap{
+	return response.JSON(200, util.DynMap{
 		"message": "Annotation added",
 		"id":      startID,
 	})
@@ -124,17 +98,14 @@ func formatGraphiteAnnotation(what string, data string) string {
 	return text
 }
 
-func PostGraphiteAnnotation(c *m.ReqContext, cmd dtos.PostGraphiteAnnotationsCmd) Response {
+func PostGraphiteAnnotation(c *models.ReqContext, cmd dtos.PostGraphiteAnnotationsCmd) response.Response {
 	repo := annotations.GetRepository()
 
 	if cmd.What == "" {
 		err := &CreateAnnotationError{"what field should not be empty"}
-		return ApiError(500, "Failed to save Graphite annotation", err)
+		return response.Error(400, "Failed to save Graphite annotation", err)
 	}
 
-	if cmd.When == 0 {
-		cmd.When = time.Now().Unix()
-	}
 	text := formatGraphiteAnnotation(cmd.What, cmd.Data)
 
 	// Support tags in prior to Graphite 0.10.0 format (string of tags separated by space)
@@ -152,133 +123,150 @@ func PostGraphiteAnnotation(c *m.ReqContext, cmd dtos.PostGraphiteAnnotationsCmd
 				tagsArray = append(tagsArray, tagStr)
 			} else {
 				err := &CreateAnnotationError{"tag should be a string"}
-				return ApiError(500, "Failed to save Graphite annotation", err)
+				return response.Error(400, "Failed to save Graphite annotation", err)
 			}
 		}
 	default:
 		err := &CreateAnnotationError{"unsupported tags format"}
-		return ApiError(500, "Failed to save Graphite annotation", err)
+		return response.Error(400, "Failed to save Graphite annotation", err)
 	}
 
 	item := annotations.Item{
 		OrgId:  c.OrgId,
 		UserId: c.UserId,
-		Epoch:  cmd.When,
+		Epoch:  cmd.When * 1000,
 		Text:   text,
 		Tags:   tagsArray,
 	}
 
 	if err := repo.Save(&item); err != nil {
-		return ApiError(500, "Failed to save Graphite annotation", err)
+		return response.Error(500, "Failed to save Graphite annotation", err)
 	}
 
-	return Json(200, util.DynMap{
+	return response.JSON(200, util.DynMap{
 		"message": "Graphite annotation added",
 		"id":      item.Id,
 	})
 }
 
-func UpdateAnnotation(c *m.ReqContext, cmd dtos.UpdateAnnotationsCmd) Response {
-	annotationId := c.ParamsInt64(":annotationId")
+func UpdateAnnotation(c *models.ReqContext, cmd dtos.UpdateAnnotationsCmd) response.Response {
+	annotationID := c.ParamsInt64(":annotationId")
 
 	repo := annotations.GetRepository()
 
-	if resp := canSave(c, repo, annotationId); resp != nil {
+	if resp := canSave(c, repo, annotationID); resp != nil {
 		return resp
 	}
 
 	item := annotations.Item{
-		OrgId:  c.OrgId,
-		UserId: c.UserId,
-		Id:     annotationId,
-		Epoch:  cmd.Time / 1000,
-		Text:   cmd.Text,
-		Tags:   cmd.Tags,
+		OrgId:    c.OrgId,
+		UserId:   c.UserId,
+		Id:       annotationID,
+		Epoch:    cmd.Time,
+		EpochEnd: cmd.TimeEnd,
+		Text:     cmd.Text,
+		Tags:     cmd.Tags,
 	}
 
 	if err := repo.Update(&item); err != nil {
-		return ApiError(500, "Failed to update annotation", err)
+		return response.Error(500, "Failed to update annotation", err)
 	}
 
-	if cmd.IsRegion {
-		itemRight := item
-		itemRight.RegionId = item.Id
-		itemRight.Epoch = cmd.TimeEnd / 1000
-
-		// We don't know id of region right event, so set it to 0 and find then using query like
-		// ... WHERE region_id = <item.RegionId> AND id != <item.RegionId> ...
-		itemRight.Id = 0
-
-		if err := repo.Update(&itemRight); err != nil {
-			return ApiError(500, "Failed to update annotation for region end time", err)
-		}
-	}
-
-	return ApiSuccess("Annotation updated")
+	return response.Success("Annotation updated")
 }
 
-func DeleteAnnotations(c *m.ReqContext, cmd dtos.DeleteAnnotationsCmd) Response {
+func PatchAnnotation(c *models.ReqContext, cmd dtos.PatchAnnotationsCmd) response.Response {
+	annotationID := c.ParamsInt64(":annotationId")
+
+	repo := annotations.GetRepository()
+
+	if resp := canSave(c, repo, annotationID); resp != nil {
+		return resp
+	}
+
+	items, err := repo.Find(&annotations.ItemQuery{AnnotationId: annotationID, OrgId: c.OrgId})
+
+	if err != nil || len(items) == 0 {
+		return response.Error(404, "Could not find annotation to update", err)
+	}
+
+	existing := annotations.Item{
+		OrgId:    c.OrgId,
+		UserId:   c.UserId,
+		Id:       annotationID,
+		Epoch:    items[0].Time,
+		EpochEnd: items[0].TimeEnd,
+		Text:     items[0].Text,
+		Tags:     items[0].Tags,
+	}
+
+	if cmd.Tags != nil {
+		existing.Tags = cmd.Tags
+	}
+
+	if cmd.Text != "" && cmd.Text != existing.Text {
+		existing.Text = cmd.Text
+	}
+
+	if cmd.Time > 0 && cmd.Time != existing.Epoch {
+		existing.Epoch = cmd.Time
+	}
+
+	if cmd.TimeEnd > 0 && cmd.TimeEnd != existing.EpochEnd {
+		existing.EpochEnd = cmd.TimeEnd
+	}
+
+	if err := repo.Update(&existing); err != nil {
+		return response.Error(500, "Failed to update annotation", err)
+	}
+
+	return response.Success("Annotation patched")
+}
+
+func DeleteAnnotations(c *models.ReqContext, cmd dtos.DeleteAnnotationsCmd) response.Response {
 	repo := annotations.GetRepository()
 
 	err := repo.Delete(&annotations.DeleteParams{
-		AlertId:     cmd.PanelId,
+		OrgId:       c.OrgId,
+		Id:          cmd.AnnotationId,
 		DashboardId: cmd.DashboardId,
 		PanelId:     cmd.PanelId,
 	})
 
 	if err != nil {
-		return ApiError(500, "Failed to delete annotations", err)
+		return response.Error(500, "Failed to delete annotations", err)
 	}
 
-	return ApiSuccess("Annotations deleted")
+	return response.Success("Annotations deleted")
 }
 
-func DeleteAnnotationById(c *m.ReqContext) Response {
+func DeleteAnnotationByID(c *models.ReqContext) response.Response {
 	repo := annotations.GetRepository()
-	annotationId := c.ParamsInt64(":annotationId")
+	annotationID := c.ParamsInt64(":annotationId")
 
-	if resp := canSave(c, repo, annotationId); resp != nil {
+	if resp := canSave(c, repo, annotationID); resp != nil {
 		return resp
 	}
 
 	err := repo.Delete(&annotations.DeleteParams{
-		Id: annotationId,
+		OrgId: c.OrgId,
+		Id:    annotationID,
 	})
-
 	if err != nil {
-		return ApiError(500, "Failed to delete annotation", err)
+		return response.Error(500, "Failed to delete annotation", err)
 	}
 
-	return ApiSuccess("Annotation deleted")
+	return response.Success("Annotation deleted")
 }
 
-func DeleteAnnotationRegion(c *m.ReqContext) Response {
-	repo := annotations.GetRepository()
-	regionId := c.ParamsInt64(":regionId")
-
-	if resp := canSave(c, repo, regionId); resp != nil {
-		return resp
-	}
-
-	err := repo.Delete(&annotations.DeleteParams{
-		RegionId: regionId,
-	})
-
-	if err != nil {
-		return ApiError(500, "Failed to delete annotation region", err)
-	}
-
-	return ApiSuccess("Annotation region deleted")
-}
-
-func canSaveByDashboardId(c *m.ReqContext, dashboardId int64) (bool, error) {
-	if dashboardId == 0 && !c.SignedInUser.HasRole(m.ROLE_EDITOR) {
+func canSaveByDashboardID(c *models.ReqContext, dashboardID int64) (bool, error) {
+	if dashboardID == 0 && !c.SignedInUser.HasRole(models.ROLE_EDITOR) {
 		return false, nil
 	}
 
-	if dashboardId > 0 {
-		guardian := guardian.New(dashboardId, c.OrgId, c.SignedInUser)
-		if canEdit, err := guardian.CanEdit(); err != nil || !canEdit {
+	if dashboardID != 0 {
+		guard := guardian.New(dashboardID, c.OrgId, c.SignedInUser)
+		if canEdit, err := guard.CanEdit(); err != nil || !canEdit {
 			return false, err
 		}
 	}
@@ -286,32 +274,15 @@ func canSaveByDashboardId(c *m.ReqContext, dashboardId int64) (bool, error) {
 	return true, nil
 }
 
-func canSave(c *m.ReqContext, repo annotations.Repository, annotationId int64) Response {
-	items, err := repo.Find(&annotations.ItemQuery{AnnotationId: annotationId, OrgId: c.OrgId})
-
+func canSave(c *models.ReqContext, repo annotations.Repository, annotationID int64) response.Response {
+	items, err := repo.Find(&annotations.ItemQuery{AnnotationId: annotationID, OrgId: c.OrgId})
 	if err != nil || len(items) == 0 {
-		return ApiError(500, "Could not find annotation to update", err)
+		return response.Error(500, "Could not find annotation to update", err)
 	}
 
-	dashboardId := items[0].DashboardId
+	dashboardID := items[0].DashboardId
 
-	if canSave, err := canSaveByDashboardId(c, dashboardId); err != nil || !canSave {
-		return dashboardGuardianResponse(err)
-	}
-
-	return nil
-}
-
-func canSaveByRegionId(c *m.ReqContext, repo annotations.Repository, regionId int64) Response {
-	items, err := repo.Find(&annotations.ItemQuery{RegionId: regionId, OrgId: c.OrgId})
-
-	if err != nil || len(items) == 0 {
-		return ApiError(500, "Could not find annotation to update", err)
-	}
-
-	dashboardId := items[0].DashboardId
-
-	if canSave, err := canSaveByDashboardId(c, dashboardId); err != nil || !canSave {
+	if canSave, err := canSaveByDashboardID(c, dashboardID); err != nil || !canSave {
 		return dashboardGuardianResponse(err)
 	}
 

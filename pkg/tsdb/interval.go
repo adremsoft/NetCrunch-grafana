@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -10,10 +11,10 @@ import (
 )
 
 var (
-	defaultRes         int64         = 1500
-	defaultMinInterval time.Duration = 1 * time.Millisecond
-	year               time.Duration = time.Hour * 24 * 365
-	day                time.Duration = time.Hour * 24
+	defaultRes         int64 = 1500
+	defaultMinInterval       = time.Millisecond * 1
+	year                     = time.Hour * 24 * 365
+	day                      = time.Hour * 24
 )
 
 type Interval struct {
@@ -49,17 +50,21 @@ func NewIntervalCalculator(opt *IntervalOptions) *intervalCalculator {
 	return calc
 }
 
+func (i *Interval) Milliseconds() int64 {
+	return i.Value.Nanoseconds() / int64(time.Millisecond)
+}
+
 func (ic *intervalCalculator) Calculate(timerange *TimeRange, minInterval time.Duration) Interval {
 	to := timerange.MustGetTo().UnixNano()
 	from := timerange.MustGetFrom().UnixNano()
 	interval := time.Duration((to - from) / defaultRes)
 
 	if interval < minInterval {
-		return Interval{Text: formatDuration(minInterval), Value: minInterval}
+		return Interval{Text: FormatDuration(minInterval), Value: minInterval}
 	}
 
 	rounded := roundInterval(interval)
-	return Interval{Text: formatDuration(rounded), Value: rounded}
+	return Interval{Text: FormatDuration(rounded), Value: rounded}
 }
 
 func GetIntervalFrom(dsInfo *models.DataSource, queryModel *simplejson.Json, defaultInterval time.Duration) (time.Duration, error) {
@@ -77,6 +82,13 @@ func GetIntervalFrom(dsInfo *models.DataSource, queryModel *simplejson.Json, def
 	}
 
 	interval = strings.Replace(strings.Replace(interval, "<", "", 1), ">", "", 1)
+	isPureNum, err := regexp.MatchString(`^\d+$`, interval)
+	if err != nil {
+		return time.Duration(0), err
+	}
+	if isPureNum {
+		interval += "s"
+	}
 	parsedInterval, err := time.ParseDuration(interval)
 	if err != nil {
 		return time.Duration(0), err
@@ -85,7 +97,8 @@ func GetIntervalFrom(dsInfo *models.DataSource, queryModel *simplejson.Json, def
 	return parsedInterval, nil
 }
 
-func formatDuration(inter time.Duration) string {
+// FormatDuration converts a duration into the kbn format e.g. 1m 2h or 3d
+func FormatDuration(inter time.Duration) string {
 	if inter >= year {
 		return fmt.Sprintf("%dy", inter/year)
 	}
@@ -113,8 +126,9 @@ func formatDuration(inter time.Duration) string {
 	return "1ms"
 }
 
+//nolint: gocyclo
 func roundInterval(interval time.Duration) time.Duration {
-	switch true {
+	switch {
 	// 0.015s
 	case interval <= 15*time.Millisecond:
 		return time.Millisecond * 10 // 0.01s

@@ -6,10 +6,9 @@
  * found in the LICENSE file.
  */
 
-import '../css/query.editor.css!';            // eslint-disable-line
+import '../css/query.editor.css';
 import '../directives/ncSpinner.directive';
 import '../directives/ncFocus.directive';
-import { QueryCtrl } from 'app/plugins/sdk';  // eslint-disable-line
 import { datasourceURL } from '../common';
 
 const
@@ -30,10 +29,9 @@ const
   DEFAULT_COUNTER_DISPLAY_NAME = 'Select counter',
   COUNTERS_SUBMENU_LENGTH = 25;
 
-class NetCrunchQueryController extends QueryCtrl {
+class NetCrunchQueryController {
 
   constructor(uiSegmentSrv, $scope, $rootScope, $timeout) {
-    super();
 
     this[PRIVATE_PROPERTIES.uiSegmentSrv] = uiSegmentSrv;
     this[PRIVATE_PROPERTIES.scope] = $scope;
@@ -223,7 +221,7 @@ class NetCrunchQueryController extends QueryCtrl {
   }
 
   targetChanged() {
-    this.refresh();
+    this.panelCtrl.refresh();
   }
 
   nodeSpinnerChanged(state) {

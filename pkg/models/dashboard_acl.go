@@ -24,20 +24,22 @@ func (p PermissionType) String() string {
 
 // Typed errors
 var (
-	ErrDashboardAclInfoMissing           = errors.New("User id and team id cannot both be empty for a dashboard permission.")
-	ErrDashboardPermissionDashboardEmpty = errors.New("Dashboard Id must be greater than zero for a dashboard permission.")
-	ErrFolderAclInfoMissing              = errors.New("User id and team id cannot both be empty for a folder permission.")
-	ErrFolderPermissionFolderEmpty       = errors.New("Folder Id must be greater than zero for a folder permission.")
+	ErrDashboardAclInfoMissing           = errors.New("user id and team id cannot both be empty for a dashboard permission")
+	ErrDashboardPermissionDashboardEmpty = errors.New("dashboard id must be greater than zero for a dashboard permission")
+	ErrFolderAclInfoMissing              = errors.New("user id and team id cannot both be empty for a folder permission")
+	ErrFolderPermissionFolderEmpty       = errors.New("folder id must be greater than zero for a folder permission")
+	ErrPermissionsWithRoleNotAllowed     = errors.New("team and user permissions cannot have an associated role")
 )
 
 // Dashboard ACL model
 type DashboardAcl struct {
+	// nolint:stylecheck
 	Id          int64
-	OrgId       int64
-	DashboardId int64
+	OrgID       int64 `xorm:"org_id"`
+	DashboardID int64 `xorm:"dashboard_id"`
 
-	UserId     int64
-	TeamId     int64
+	UserID     int64     `xorm:"user_id"`
+	TeamID     int64     `xorm:"team_id"`
 	Role       *RoleType // pointer to be nullable
 	Permission PermissionType
 
@@ -56,7 +58,10 @@ type DashboardAclInfoDTO struct {
 	UserId         int64          `json:"userId"`
 	UserLogin      string         `json:"userLogin"`
 	UserEmail      string         `json:"userEmail"`
+	UserAvatarUrl  string         `json:"userAvatarUrl"`
 	TeamId         int64          `json:"teamId"`
+	TeamEmail      string         `json:"teamEmail"`
+	TeamAvatarUrl  string         `json:"teamAvatarUrl"`
 	Team           string         `json:"team"`
 	Role           *RoleType      `json:"role,omitempty"`
 	Permission     PermissionType `json:"permission"`
@@ -66,6 +71,7 @@ type DashboardAclInfoDTO struct {
 	Slug           string         `json:"slug"`
 	IsFolder       bool           `json:"isFolder"`
 	Url            string         `json:"url"`
+	Inherited      bool           `json:"inherited"`
 }
 
 func (dto *DashboardAclInfoDTO) hasSameRoleAs(other *DashboardAclInfoDTO) bool {
@@ -94,7 +100,7 @@ func (dto *DashboardAclInfoDTO) IsDuplicateOf(other *DashboardAclInfoDTO) bool {
 //
 
 type UpdateDashboardAclCommand struct {
-	DashboardId int64
+	DashboardID int64
 	Items       []*DashboardAcl
 }
 
@@ -102,7 +108,7 @@ type UpdateDashboardAclCommand struct {
 // QUERIES
 //
 type GetDashboardAclInfoListQuery struct {
-	DashboardId int64
-	OrgId       int64
+	DashboardID int64
+	OrgID       int64
 	Result      []*DashboardAclInfoDTO
 }

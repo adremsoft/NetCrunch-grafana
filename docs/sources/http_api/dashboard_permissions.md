@@ -2,11 +2,7 @@
 title = "Dashboard Permissions HTTP API "
 description = "Grafana Dashboard Permissions HTTP API"
 keywords = ["grafana", "http", "documentation", "api", "dashboard", "permission", "permissions", "acl"]
-aliases = ["/http_api/dashboardpermissions/"]
-type = "docs"
-[menu.docs]
-name = "Dashboard Permissions"
-parent = "http_api"
+aliases = ["/docs/grafana/latest/http_api/dashboardpermissions/"]
 +++
 
 # Dashboard Permissions API
@@ -106,6 +102,7 @@ Accept: application/json
 Content-Type: application/json
 Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
 
+{
   "items": [
     {
       "role": "Viewer",

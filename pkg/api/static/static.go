@@ -48,7 +48,7 @@ type StaticOptions struct {
 	// Expires defines which user-defined function to use for producing a HTTP Expires Header
 	// https://developers.google.com/speed/docs/insights/LeverageBrowserCaching
 	AddHeaders func(ctx *macaron.Context)
-	// FileSystem is the interface for supporting any implmentation of file system.
+	// FileSystem is the interface for supporting any implementation of file system.
 	FileSystem http.FileSystem
 }
 
@@ -63,20 +63,6 @@ func (sm *staticMap) Set(dir *http.Dir) {
 	defer sm.lock.Unlock()
 
 	sm.data[string(*dir)] = dir
-}
-
-func (sm *staticMap) Get(name string) *http.Dir {
-	sm.lock.RLock()
-	defer sm.lock.RUnlock()
-
-	return sm.data[name]
-}
-
-func (sm *staticMap) Delete(name string) {
-	sm.lock.Lock()
-	defer sm.lock.Unlock()
-
-	delete(sm.data, name)
 }
 
 var statics = staticMap{sync.RWMutex{}, map[string]*http.Dir{}}
@@ -148,7 +134,11 @@ func staticHandler(ctx *macaron.Context, log *log.Logger, opt StaticOptions) boo
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("Failed to close file: %s\n", err)
+		}
+	}()
 
 	fi, err := f.Stat()
 	if err != nil {
@@ -168,7 +158,11 @@ func staticHandler(ctx *macaron.Context, log *log.Logger, opt StaticOptions) boo
 		if err != nil {
 			return false // Discard error.
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Printf("Failed to close file: %s", err)
+			}
+		}()
 
 		fi, err = f.Stat()
 		if err != nil || fi.IsDir() {
@@ -177,7 +171,7 @@ func staticHandler(ctx *macaron.Context, log *log.Logger, opt StaticOptions) boo
 	}
 
 	if !opt.SkipLogging {
-		log.Println("[Static] Serving " + file)
+		log.Printf("[Static] Serving %s\n", file)
 	}
 
 	// Add an Expires header to the static content
@@ -195,24 +189,5 @@ func Static(directory string, staticOpt ...StaticOptions) macaron.Handler {
 
 	return func(ctx *macaron.Context, log *log.Logger) {
 		staticHandler(ctx, log, opt)
-	}
-}
-
-// Statics registers multiple static middleware handlers all at once.
-func Statics(opt StaticOptions, dirs ...string) macaron.Handler {
-	if len(dirs) == 0 {
-		panic("no static directory is given")
-	}
-	opts := make([]StaticOptions, len(dirs))
-	for i := range dirs {
-		opts[i] = prepareStaticOption(dirs[i], opt)
-	}
-
-	return func(ctx *macaron.Context, log *log.Logger) {
-		for i := range opts {
-			if staticHandler(ctx, log, opts[i]) {
-				return
-			}
-		}
 	}
 }

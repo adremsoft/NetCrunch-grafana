@@ -6,7 +6,9 @@ call go run build.go build
 call :CheckError "COMPILE GRAFCRUNCH SERVER"
 
 echo BUILDING GrafCrunch Client
-call grunt release
+rem call grunt release
+yarn install
+yarn build
 call :CheckError "GRAFCRUNCH CLIENT"
 
 goto EndOfScript

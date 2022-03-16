@@ -32,10 +32,6 @@ func (q *UserQuota) ToMap() map[string]int64 {
 	return quotaToMap(*q)
 }
 
-func (q *GlobalQuota) ToMap() map[string]int64 {
-	return quotaToMap(*q)
-}
-
 func quotaToMap(q interface{}) map[string]int64 {
 	qMap := make(map[string]int64)
 	typ := reflect.TypeOf(q)
@@ -63,9 +59,9 @@ type QuotaSettings struct {
 	Global  *GlobalQuota
 }
 
-func readQuotaSettings() {
+func (cfg *Cfg) readQuotaSettings() {
 	// set global defaults.
-	quota := Cfg.Section("quota")
+	quota := cfg.Raw.Section("quota")
 	Quota.Enabled = quota.Key("enabled").MustBool(false)
 
 	// per ORG Limits
@@ -91,4 +87,5 @@ func readQuotaSettings() {
 		Session:    quota.Key("global_session").MustInt64(-1),
 	}
 
+	cfg.Quota = Quota
 }

@@ -4,19 +4,18 @@ import (
 	"testing"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestTeamsNotifier(t *testing.T) {
 	Convey("Teams notifier tests", t, func() {
-
 		Convey("Parsing alert notification from settings", func() {
 			Convey("empty settings should return error", func() {
 				json := `{ }`
 
 				settingsJSON, _ := simplejson.NewJson([]byte(json))
-				model := &m.AlertNotification{
+				model := &models.AlertNotification{
 					Name:     "ops",
 					Type:     "teams",
 					Settings: settingsJSON,
@@ -33,7 +32,7 @@ func TestTeamsNotifier(t *testing.T) {
 				}`
 
 				settingsJSON, _ := simplejson.NewJson([]byte(json))
-				model := &m.AlertNotification{
+				model := &models.AlertNotification{
 					Name:     "ops",
 					Type:     "teams",
 					Settings: settingsJSON,
@@ -45,7 +44,7 @@ func TestTeamsNotifier(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(teamsNotifier.Name, ShouldEqual, "ops")
 				So(teamsNotifier.Type, ShouldEqual, "teams")
-				So(teamsNotifier.Url, ShouldEqual, "http://google.com")
+				So(teamsNotifier.URL, ShouldEqual, "http://google.com")
 			})
 
 			Convey("from settings with Recipient and Mention", func() {
@@ -55,7 +54,7 @@ func TestTeamsNotifier(t *testing.T) {
 				}`
 
 				settingsJSON, _ := simplejson.NewJson([]byte(json))
-				model := &m.AlertNotification{
+				model := &models.AlertNotification{
 					Name:     "ops",
 					Type:     "teams",
 					Settings: settingsJSON,
@@ -67,9 +66,8 @@ func TestTeamsNotifier(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(teamsNotifier.Name, ShouldEqual, "ops")
 				So(teamsNotifier.Type, ShouldEqual, "teams")
-				So(teamsNotifier.Url, ShouldEqual, "http://google.com")
+				So(teamsNotifier.URL, ShouldEqual, "http://google.com")
 			})
-
 		})
 	})
 }

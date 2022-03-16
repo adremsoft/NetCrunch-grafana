@@ -1,34 +1,39 @@
 import _ from 'lodash';
 import TableModel from 'app/core/table_model';
+import { FieldType, QueryResultMeta, TimeSeries, TableData } from '@grafana/data';
 
 export default class InfluxSeries {
+  refId?: string;
   series: any;
   alias: any;
   annotation: any;
+  meta?: QueryResultMeta;
 
-  constructor(options) {
+  constructor(options: { series: any; alias?: any; annotation?: any; meta?: QueryResultMeta; refId?: string }) {
     this.series = options.series;
     this.alias = options.alias;
     this.annotation = options.annotation;
+    this.meta = options.meta;
+    this.refId = options.refId;
   }
 
-  getTimeSeries() {
-    var output = [];
-    var i, j;
+  getTimeSeries(): TimeSeries[] {
+    const output: TimeSeries[] = [];
+    let i, j;
 
     if (this.series.length === 0) {
       return output;
     }
 
-    _.each(this.series, series => {
-      var columns = series.columns.length;
-      var tags = _.map(series.tags, function(value, key) {
+    _.each(this.series, (series) => {
+      const columns = series.columns.length;
+      const tags = _.map(series.tags, (value, key) => {
         return key + ': ' + value;
       });
 
       for (j = 1; j < columns; j++) {
-        var seriesName = series.name;
-        var columnName = series.columns[j];
+        let seriesName = series.name;
+        const columnName = series.columns[j];
         if (columnName !== 'value') {
           seriesName = seriesName + '.' + columnName;
         }
@@ -39,27 +44,27 @@ export default class InfluxSeries {
           seriesName = seriesName + ' {' + tags.join(', ') + '}';
         }
 
-        var datapoints = [];
+        const datapoints = [];
         if (series.values) {
           for (i = 0; i < series.values.length; i++) {
             datapoints[i] = [series.values[i][j], series.values[i][0]];
           }
         }
 
-        output.push({ target: seriesName, datapoints: datapoints });
+        output.push({ target: seriesName, datapoints: datapoints, meta: this.meta, refId: this.refId });
       }
     });
 
     return output;
   }
 
-  _getSeriesName(series, index) {
-    var regex = /\$(\w+)|\[\[([\s\S]+?)\]\]/g;
-    var segments = series.name.split('.');
+  _getSeriesName(series: any, index: number) {
+    const regex = /\$(\w+)|\[\[([\s\S]+?)\]\]/g;
+    const segments = series.name.split('.');
 
-    return this.alias.replace(regex, function(match, g1, g2) {
-      var group = g1 || g2;
-      var segIndex = parseInt(group, 10);
+    return this.alias.replace(regex, (match: any, g1: any, g2: any) => {
+      const group = g1 || g2;
+      const segIndex = parseInt(group, 10);
 
       if (group === 'm' || group === 'measurement') {
         return series.name;
@@ -74,7 +79,7 @@ export default class InfluxSeries {
         return match;
       }
 
-      var tag = group.replace('tag_', '');
+      const tag = group.replace('tag_', '');
       if (!series.tags) {
         return match;
       }
@@ -83,13 +88,13 @@ export default class InfluxSeries {
   }
 
   getAnnotations() {
-    var list = [];
+    const list: any[] = [];
 
-    _.each(this.series, series => {
-      var titleCol = null;
-      var timeCol = null;
-      var tagsCol = [];
-      var textCol = null;
+    _.each(this.series, (series) => {
+      let titleCol: any = null;
+      let timeCol: any = null;
+      const tagsCol: any = [];
+      let textCol: any = null;
 
       _.each(series.columns, (column, index) => {
         if (column === 'time') {
@@ -98,9 +103,6 @@ export default class InfluxSeries {
         }
         if (column === 'sequence_number') {
           return;
-        }
-        if (!titleCol) {
-          titleCol = index;
         }
         if (column === this.annotation.titleColumn) {
           titleCol = index;
@@ -114,20 +116,24 @@ export default class InfluxSeries {
           textCol = index;
           return;
         }
+        // legacy case
+        if (!titleCol && textCol !== index) {
+          titleCol = index;
+        }
       });
 
-      _.each(series.values, value => {
-        var data = {
+      _.each(series.values, (value) => {
+        const data = {
           annotation: this.annotation,
           time: +new Date(value[timeCol]),
           title: value[titleCol],
           // Remove empty values, then split in different tags for comma separated values
           tags: _.flatten(
             tagsCol
-              .filter(function(t) {
+              .filter((t: any) => {
                 return value[t];
               })
-              .map(function(t) {
+              .map((t: any) => {
                 return value[t].split(',');
               })
           ),
@@ -141,31 +147,40 @@ export default class InfluxSeries {
     return list;
   }
 
-  getTable() {
-    var table = new TableModel();
-    var i, j;
+  getTable(): TableData {
+    const table = new TableModel();
+    let i, j;
+
+    table.refId = this.refId;
+    table.meta = this.meta;
 
     if (this.series.length === 0) {
       return table;
     }
 
-    _.each(this.series, (series, seriesIndex) => {
+    _.each(this.series, (series: any, seriesIndex: number) => {
       if (seriesIndex === 0) {
-        table.columns.push({ text: 'Time', type: 'time' });
-        _.each(_.keys(series.tags), function(key) {
+        j = 0;
+        // Check that the first column is indeed 'time'
+        if (series.columns[0] === 'time') {
+          // Push this now before the tags and with the right type
+          table.columns.push({ text: 'Time', type: FieldType.time });
+          j++;
+        }
+        _.each(_.keys(series.tags), (key) => {
           table.columns.push({ text: key });
         });
-        for (j = 1; j < series.columns.length; j++) {
+        for (; j < series.columns.length; j++) {
           table.columns.push({ text: series.columns[j] });
         }
       }
 
       if (series.values) {
         for (i = 0; i < series.values.length; i++) {
-          var values = series.values[i];
-          var reordered = [values[0]];
+          const values = series.values[i];
+          const reordered = [values[0]];
           if (series.tags) {
-            for (var key in series.tags) {
+            for (const key in series.tags) {
               if (series.tags.hasOwnProperty(key)) {
                 reordered.push(series.tags[key]);
               }

@@ -56,7 +56,7 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
   function processMapData(mapRec) {
     networkAtlas.addMap(mapRec);
   }
-  
+
   function processSensorData(sensorRec) {
     networkAtlas.addSensor(sensorRec);
   }
@@ -75,12 +75,12 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
 
         PERFORMANCE_VIEWS_NET_INT_ID = 2,
         HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName',
-        NETWORKS_QUERY = 'Select NetIntId, DisplayName, HostMapData, IconId, MapType, NetworkData, MapClassTag ' +
+        NETWORKS_QUERY = 'Select NetIntId, DisplayName, HostMapData, IconId, MapClassTag ' +
                          'where (MapClassTag != \'pnet\') && (MapClassTag != \'dependencynet\') && ' +
                                '(MapClassTag != \'issuesnet\') && (MapClassTag != \'all\') && ' +
                                '(NetIntId != ' + PERFORMANCE_VIEWS_NET_INT_ID + ')',
         SENSORS_QUERY = "Select NodeId, Name, Status, UId, Alerts, CfgGroup " +
-                        "where CfgGroup = 'sensors' || CfgGroup = 'cloud'";    
+                        "where CfgGroup = 'sensors' || CfgGroup = 'cloud'";
 
       let
         hostsData,
@@ -103,7 +103,7 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
           self.onNetworksChanged();
         }
       }
-      
+
       function sensorsChanged() {
         sensorsReady.resolve(networkAtlas.sensors);
         if (hostsResolved && typeof self.onNodesChanged === 'function') {

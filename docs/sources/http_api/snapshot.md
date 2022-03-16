@@ -2,11 +2,7 @@
 title = "HTTP Snapshot API "
 description = "Grafana HTTP API"
 keywords = ["grafana", "http", "documentation", "api", "snapshot"]
-aliases = ["/http_api/snapshot/"]
-type = "docs"
-[menu.docs]
-name = "Snapshot"
-parent = "http_api"
+aliases = ["/docs/grafana/latest/http_api/snapshot/"]
 +++
 
 # Snapshot API
@@ -63,6 +59,8 @@ JSON Body schema:
 - **key** - Optional. Define the unique key. Required if **external** is `true`.
 - **deleteKey** - Optional. Unique key used to delete the snapshot. It is different from the **key** so that only the creator can delete the snapshot. Required if **external** is `true`.
 
+> **Note:** When creating a snapshot using the API, you have to provide the full dashboard payload including the snapshot data. This endpoint is designed for the Grafana UI.
+
 **Example Response**:
 
 ```http
@@ -70,9 +68,10 @@ JSON Body schema:
     Content-Type: application/json
     {
       "deleteKey":"XXXXXXX",
-      "deleteUrl":"myurl/dashboard/snapshot/XXXXXXX",
+      "deleteUrl":"myurl/api/snapshots-delete/XXXXXXX",
       "key":"YYYYYYY",
-      "url":"myurl/dashboard/snapshot/YYYYYYY"
+      "url":"myurl/dashboard/snapshot/YYYYYYY",
+      "id": 1,
     }
 ```
 
@@ -81,7 +80,46 @@ Keys:
 - **deleteKey** – Key generated to delete the snapshot
 - **key** – Key generated to share the dashboard
 
-## Get Snapshot by Id
+## Get list of Snapshots
+
+`GET /api/dashboard/snapshots`
+
+Query parameters:
+
+- **query** – Search Query
+- **limit** – Limit the number of returned results
+
+**Example Request**:
+
+```http
+GET /api/dashboard/snapshots HTTP/1.1
+Accept: application/json
+Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
+```
+
+**Example Response**:
+
+```http
+HTTP/1.1 200
+Content-Type: application/json
+
+[
+  {
+    "id":8,
+    "name":"Home",
+    "key":"YYYYYYY",
+    "orgId":1,
+    "userId":1,
+    "external":false,
+    "externalUrl":"",
+    "expires":"2200-13-32T25:23:23+02:00",
+    "created":"2200-13-32T28:24:23+02:00",
+    "updated":"2200-13-32T28:24:23+02:00"
+  }
+]
+```
+
+## Get Snapshot by Key
 
 `GET /api/snapshots/:key`
 
@@ -90,7 +128,6 @@ Keys:
 ```http
 GET /api/snapshots/YYYYYYY HTTP/1.1
 Accept: application/json
-Content-Type: application/json
 Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
 ```
 
@@ -140,16 +177,15 @@ Content-Type: application/json
 }
 ```
 
-## Delete Snapshot by deleteKey
+## Delete Snapshot by Key
 
-`GET /api/snapshots-delete/:deleteKey`
+`DELETE /api/snapshots/:key`
 
 **Example Request**:
 
 ```http
-GET /api/snapshots/YYYYYYY HTTP/1.1
+DELETE /api/snapshots/YYYYYYY HTTP/1.1
 Accept: application/json
-Content-Type: application/json
 Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
 ```
 
@@ -159,5 +195,27 @@ Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
 HTTP/1.1 200
 Content-Type: application/json
 
-{"message":"Snapshot deleted. It might take an hour before it's cleared from a CDN cache."}
+{"message":"Snapshot deleted. It might take an hour before it's cleared from any CDN caches.", "id": 1}
+```
+
+## Delete Snapshot by deleteKey
+
+This API call can be used without authentication by using the secret delete key for the snapshot.
+
+`GET /api/snapshots-delete/:deleteKey`
+
+**Example Request**:
+
+```http
+GET /api/snapshots-delete/XXXXXXX HTTP/1.1
+Accept: application/json
+```
+
+**Example Response**:
+
+```http
+HTTP/1.1 200
+Content-Type: application/json
+
+{"message":"Snapshot deleted. It might take an hour before it's cleared from any CDN caches.", "id": 1}
 ```

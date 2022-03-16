@@ -8,13 +8,15 @@ import (
 type DatasourceProcessor func(datasource *models.DataSource, org *models.OrgDTO)
 
 func GetDataSourceByName(datasourceName string, orgId int64) (*models.DataSource, bool) {
-  query := models.GetDataSourceByNameQuery {
-    Name: datasourceName,
-    OrgId: orgId,
-  }
-
-  err := bus.Dispatch(&query)
-  return query.Result, (err == nil)
+  // TODO: GetDataSourceByName
+//   query := models.GetDataSourceByNameQuery {
+//     Name: datasourceName,
+//     OrgId: orgId,
+//   }
+//
+//   err := bus.Dispatch(&query)
+//   return query.Result, (err == nil)
+  return nil, false
 }
 
 func AddDataSource(datasource models.DataSource, orgId int64) bool {

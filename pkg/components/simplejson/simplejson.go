@@ -1,3 +1,8 @@
+// Package simplejson provides a wrapper for arbitrary JSON objects that adds methods to access properties.
+// Use of this package in place of types and the standard library's encoding/json package is strongly discouraged.
+//
+// Don't lint for stale code, since it's a copied library and we might as well keep the whole thing.
+// nolint:unused
 package simplejson
 
 import (
@@ -50,7 +55,7 @@ func New() *Json {
 	}
 }
 
-// New returns a pointer to a new, empty `Json` object
+// NewFromAny returns a pointer to a new `Json` object with provided data.
 func NewFromAny(data interface{}) *Json {
 	return &Json{data: data}
 }
@@ -176,6 +181,17 @@ func (j *Json) GetIndex(index int) *Json {
 	return &Json{nil}
 }
 
+// SetIndex modifies `Json` array by `index` and `value`
+// for `index` in its `array` representation
+func (j *Json) SetIndex(index int, val interface{}) {
+	a, err := j.Array()
+	if err == nil {
+		if len(a) > index {
+			a[index] = val
+		}
+	}
+}
+
 // CheckGet returns a pointer to a new `Json` object and
 // a `bool` identifying success or failure
 //
@@ -256,7 +272,7 @@ func (j *Json) StringArray() ([]string, error) {
 
 // MustArray guarantees the return of a `[]interface{}` (with optional default)
 //
-// useful when you want to interate over array values in a succinct manner:
+// useful when you want to iterate over array values in a succinct manner:
 //		for i, v := range js.Get("results").MustArray() {
 //			fmt.Println(i, v)
 //		}
@@ -281,7 +297,7 @@ func (j *Json) MustArray(args ...[]interface{}) []interface{} {
 
 // MustMap guarantees the return of a `map[string]interface{}` (with optional default)
 //
-// useful when you want to interate over map values in a succinct manner:
+// useful when you want to iterate over map values in a succinct manner:
 //		for k, v := range js.Get("dictionary").MustMap() {
 //			fmt.Println(k, v)
 //		}
@@ -329,7 +345,7 @@ func (j *Json) MustString(args ...string) string {
 
 // MustStringArray guarantees the return of a `[]string` (with optional default)
 //
-// useful when you want to interate over array values in a succinct manner:
+// useful when you want to iterate over array values in a succinct manner:
 //		for i, s := range js.Get("results").MustStringArray() {
 //			fmt.Println(i, s)
 //		}

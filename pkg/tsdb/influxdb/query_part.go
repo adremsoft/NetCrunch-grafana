@@ -31,6 +31,9 @@ func init() {
 	renders["mean"] = QueryDefinition{Renderer: functionRenderer}
 	renders["median"] = QueryDefinition{Renderer: functionRenderer}
 	renders["sum"] = QueryDefinition{Renderer: functionRenderer}
+	renders["mode"] = QueryDefinition{Renderer: functionRenderer}
+	renders["cumulative_sum"] = QueryDefinition{Renderer: functionRenderer}
+	renders["non_negative_difference"] = QueryDefinition{Renderer: functionRenderer}
 
 	renders["holt_winters"] = QueryDefinition{
 		Renderer: functionRenderer,
@@ -125,15 +128,10 @@ func aliasRenderer(query *Query, queryContext *tsdb.TsdbQuery, part *QueryPart, 
 	return fmt.Sprintf(`%s AS "%s"`, innerExpr, part.Params[0])
 }
 
-func (r QueryDefinition) Render(query *Query, queryContext *tsdb.TsdbQuery, part *QueryPart, innerExpr string) string {
-	return r.Renderer(query, queryContext, part, innerExpr)
-}
-
 func NewQueryPart(typ string, params []string) (*QueryPart, error) {
 	def, exist := renders[typ]
-
 	if !exist {
-		return nil, fmt.Errorf("Missing query definition for %s", typ)
+		return nil, fmt.Errorf("missing query definition for %q", typ)
 	}
 
 	return &QueryPart{

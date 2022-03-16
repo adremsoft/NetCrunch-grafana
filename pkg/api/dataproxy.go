@@ -1,59 +1,65 @@
 package api
 
 import (
+	"errors"
 	"fmt"
-	"time"
+	"net/http"
+	"regexp"
 
+	"github.com/grafana/grafana/pkg/api/datasource"
 	"github.com/grafana/grafana/pkg/api/pluginproxy"
-	"github.com/grafana/grafana/pkg/bus"
-	"github.com/grafana/grafana/pkg/metrics"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/infra/metrics"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
 )
 
-const HeaderNameNoBackendCache = "X-Grafana-NoCache"
+// ProxyDataSourceRequest proxies datasource requests
+func (hs *HTTPServer) ProxyDataSourceRequest(c *models.ReqContext) {
+	c.TimeRequest(metrics.MDataSourceProxyReqTimer)
 
-func (hs *HttpServer) getDatasourceById(id int64, orgId int64, nocache bool) (*m.DataSource, error) {
-	cacheKey := fmt.Sprintf("ds-%d", id)
-
-	if !nocache {
-		if cached, found := hs.cache.Get(cacheKey); found {
-			ds := cached.(*m.DataSource)
-			if ds.OrgId == orgId {
-				return ds, nil
-			}
-		}
-	}
-
-	query := m.GetDataSourceByIdQuery{Id: id, OrgId: orgId}
-	if err := bus.Dispatch(&query); err != nil {
-		return nil, err
-	}
-
-	hs.cache.Set(cacheKey, query.Result, time.Second*5)
-	return query.Result, nil
-}
-
-func (hs *HttpServer) ProxyDataSourceRequest(c *m.ReqContext) {
-	c.TimeRequest(metrics.M_DataSource_ProxyReq_Timer)
-
-	nocache := c.Req.Header.Get(HeaderNameNoBackendCache) == "true"
-
-	ds, err := hs.getDatasourceById(c.ParamsInt64(":id"), c.OrgId, nocache)
-
+	dsID := c.ParamsInt64(":id")
+	ds, err := hs.DatasourceCache.GetDatasource(dsID, c.SignedInUser, c.SkipCache)
 	if err != nil {
-		c.JsonApiErr(500, "Unable to load datasource meta data", err)
+		if errors.Is(err, models.ErrDataSourceAccessDenied) {
+			c.JsonApiErr(http.StatusForbidden, "Access denied to datasource", err)
+			return
+		}
+		c.JsonApiErr(http.StatusInternalServerError, "Unable to load datasource meta data", err)
+		return
+	}
+
+	err = hs.PluginRequestValidator.Validate(ds.Url, c.Req.Request)
+	if err != nil {
+		c.JsonApiErr(http.StatusForbidden, "Access denied", err)
 		return
 	}
 
 	// find plugin
 	plugin, ok := plugins.DataSources[ds.Type]
 	if !ok {
-		c.JsonApiErr(500, "Unable to find datasource plugin", err)
+		c.JsonApiErr(http.StatusInternalServerError, "Unable to find datasource plugin", err)
 		return
 	}
 
-	proxyPath := c.Params("*")
-	proxy := pluginproxy.NewDataSourceProxy(ds, plugin, c, proxyPath)
+	proxyPath := getProxyPath(c)
+	proxy, err := pluginproxy.NewDataSourceProxy(ds, plugin, c, proxyPath, hs.Cfg)
+	if err != nil {
+		if errors.Is(err, datasource.URLValidationError{}) {
+			c.JsonApiErr(http.StatusBadRequest, fmt.Sprintf("Invalid data source URL: %q", ds.Url), err)
+		} else {
+			c.JsonApiErr(http.StatusInternalServerError, "Failed creating data source proxy", err)
+		}
+		return
+	}
 	proxy.HandleRequest()
+}
+
+var proxyPathRegexp = regexp.MustCompile(`^\/api\/datasources\/proxy\/[\d]+\/?`)
+
+func extractProxyPath(originalRawPath string) string {
+	return proxyPathRegexp.ReplaceAllString(originalRawPath, "")
+}
+
+func getProxyPath(c *models.ReqContext) string {
+	return extractProxyPath(c.Req.URL.EscapedPath())
 }

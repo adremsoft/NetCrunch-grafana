@@ -2,8 +2,7 @@ package sqlutil
 
 import (
 	"fmt"
-
-	"github.com/go-xorm/xorm"
+	"os"
 )
 
 type TestDB struct {
@@ -11,37 +10,58 @@ type TestDB struct {
 	ConnStr    string
 }
 
-var TestDB_Sqlite3 = TestDB{DriverName: "sqlite3", ConnStr: ":memory:"}
-var TestDB_Mysql = TestDB{DriverName: "mysql", ConnStr: "grafana:password@tcp(localhost:3306)/grafana_tests?collation=utf8mb4_unicode_ci"}
-var TestDB_Postgres = TestDB{DriverName: "postgres", ConnStr: "user=grafanatest password=grafanatest host=localhost port=5432 dbname=grafanatest sslmode=disable"}
+func SQLite3TestDB() TestDB {
+	// To run all tests in a local test database, set ConnStr to "grafana_test.db"
+	return TestDB{
+		DriverName: "sqlite3",
+		// ConnStr specifies an In-memory database shared between connections.
+		ConnStr: "file::memory:?cache=shared",
+	}
+}
 
-func CleanDB(x *xorm.Engine) {
-	if x.DriverName() == "postgres" {
-		sess := x.NewSession()
-		defer sess.Close()
+func MySQLTestDB() TestDB {
+	host := os.Getenv("MYSQL_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("MYSQL_PORT")
+	if port == "" {
+		port = "3306"
+	}
+	return TestDB{
+		DriverName: "mysql",
+		ConnStr:    fmt.Sprintf("grafana:password@tcp(%s:%s)/grafana_tests?collation=utf8mb4_unicode_ci", host, port),
+	}
+}
 
-		if _, err := sess.Exec("DROP SCHEMA public CASCADE;"); err != nil {
-			panic("Failed to drop schema public")
-		}
+func PostgresTestDB() TestDB {
+	host := os.Getenv("POSTGRES_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("POSTGRES_PORT")
+	if port == "" {
+		port = "5432"
+	}
+	connStr := fmt.Sprintf("user=grafanatest password=grafanatest host=%s port=%s dbname=grafanatest sslmode=disable",
+		host, port)
+	return TestDB{
+		DriverName: "postgres",
+		ConnStr:    connStr,
+	}
+}
 
-		if _, err := sess.Exec("CREATE SCHEMA public;"); err != nil {
-			panic("Failed to create schema public")
-		}
-	} else if x.DriverName() == "mysql" {
-		tables, _ := x.DBMetas()
-		sess := x.NewSession()
-		defer sess.Close()
-
-		for _, table := range tables {
-			if _, err := sess.Exec("set foreign_key_checks = 0"); err != nil {
-				panic("failed to disable foreign key checks")
-			}
-			if _, err := sess.Exec("drop table " + table.Name + " ;"); err != nil {
-				panic(fmt.Sprintf("failed to delete table: %v, err: %v", table.Name, err))
-			}
-			if _, err := sess.Exec("set foreign_key_checks = 1"); err != nil {
-				panic("failed to disable foreign key checks")
-			}
-		}
+func MSSQLTestDB() TestDB {
+	host := os.Getenv("MSSQL_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("MSSQL_PORT")
+	if port == "" {
+		port = "1433"
+	}
+	return TestDB{
+		DriverName: "mssql",
+		ConnStr:    fmt.Sprintf("server=%s;port=%s;database=grafanatest;user id=grafana;password=Password!", host, port),
 	}
 }

@@ -13,6 +13,7 @@ type Query struct {
 	UseRawQuery  bool
 	Alias        string
 	Interval     time.Duration
+	Tz           string
 }
 
 type Tag struct {
@@ -23,10 +24,6 @@ type Tag struct {
 }
 
 type Select []QueryPart
-
-type InfluxDbSelect struct {
-	Type string
-}
 
 type Response struct {
 	Results []Result

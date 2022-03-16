@@ -1,34 +1,24 @@
-.PHONY: all default docs docs-build docs-shell shell checkvars
+.PHONY: docs docs-no-pull docs-test docs-local-static
 
-# to allow `make DOCSPORT=9000 docs`
-DOCSPORT := 3004
+IMAGE = grafana/grafana-docs-dev:latest
+CONTENT_PATH = /hugo/content/docs/grafana/latest
+LOCAL_STATIC_PATH = ../../website/static
+PORT = 3002:3002
 
-DOCKER_DOCS_IMAGE := grafana/grafana-docs
+docs:
+	docker pull $(IMAGE)
+	docker run -v $(shell pwd)/sources:$(CONTENT_PATH):Z -p $(PORT) --rm -it $(IMAGE)
 
-SOURCES_HOST_DIR := "$(shell pwd)/sources"
+docs-no-pull:
+	docker run -v $(shell pwd)/sources:$(CONTENT_PATH):Z -p $(PORT) --rm -it $(IMAGE)
 
-DOCS_MOUNT := -v $(SOURCES_HOST_DIR):/site/content
+docs-test:
+	docker pull $(IMAGE)
+	docker run -v $(shell pwd)/sources:$(CONTENT_PATH):Z --rm -it $(IMAGE) /bin/bash -c 'make prod'
 
-DOCKER_RUN_DOCS := docker run --rm -it $(DOCS_MOUNT) -e NOCACHE -p 3004:3004 -p 3005:3005
-
-VERSION := $(shell head -n 1 VERSION)
-
-default: docs
-
-checkvars:
-ifndef ENV
-	$(error ENV is undefined set via ENV=staging or ENV=prod as argument to make)
-endif
-
-docs: docs-build
-	$(DOCKER_RUN_DOCS) $(DOCS_MOUNT) -e DOCKERHOST "$(DOCKER_DOCS_IMAGE)" /bin/bash -c "grunt --env=dev-docs && grunt connect --port=3004"
-
-watch: docs-build
-	$(DOCKER_RUN_DOCS) $(DOCS_MOUNT) -e DOCKERHOST "$(DOCKER_DOCS_IMAGE)" /bin/bash -c "grunt --env=dev-docs && grunt connect --port=3004 & grunt watch --port=3004 --env=dev-docs"
-
-publish: checkvars docs-build
-	$(info Publishing ENV=${ENV} and VERSION=${VERSION})
-	$(DOCKER_RUN_DOCS) $(DOCS_MOUNT) -e DOCKERHOST "$(DOCKER_DOCS_IMAGE)" /bin/bash -c "./publish.sh ${ENV}-docs ${VERSION}"
-
-docs-build:
-	docker build -t "$(DOCKER_DOCS_IMAGE)" --no-cache .
+# expects that you have grafana/website checked out in same path as the grafana repo.
+docs-local-static:
+	docker pull $(IMAGE)
+	if [ ! -d "$(LOCAL_STATIC_PATH)" ]; then echo "local path (website project) $(LOCAL_STATIC_PATH) not found"]; exit 1; fi
+	docker run -v $(shell pwd)/sources:$(CONTENT_PATH):Z \
+		-v $(shell pwd)/$(LOCAL_STATIC_PATH):/hugo/static:Z -p $(PORT) --rm -it $(IMAGE)

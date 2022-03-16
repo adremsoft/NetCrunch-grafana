@@ -4,8 +4,8 @@ import (
   "errors"
   "gopkg.in/ini.v1"
   "path/filepath"
-  "github.com/grafana/grafana/pkg/log"
-  "github.com/grafana/grafana/pkg/setting"
+  "github.com/grafana/grafana/pkg/infra/log"
+//   "github.com/grafana/grafana/pkg/setting"
   "github.com/grafana/grafana/pkg/netcrunch/fileUtils"
 )
 
@@ -23,7 +23,7 @@ func getServerSettingsFilePath() string {
 }
 
 func ServerSettingsFileExist() bool {
-  return setting.PathExists(getServerSettingsFilePath())
+  return fileUtils.PathExists(getServerSettingsFilePath())
 }
 
 func readServerSettings() (*ini.File, error) {

@@ -2,7 +2,7 @@ package config
 
 import (
   "path/filepath"
-  "github.com/grafana/grafana/pkg/setting"
+//   "github.com/grafana/grafana/pkg/setting"
   "github.com/grafana/grafana/pkg/netcrunch/fileUtils"
 )
 
@@ -11,7 +11,7 @@ func getUpgradeMarkerFilePath() string {
 }
 
 func UpgradeMarkerFileExist() bool {
-  return setting.PathExists(getUpgradeMarkerFilePath())
+  return fileUtils.PathExists(getUpgradeMarkerFilePath())
 }
 
 func RemoveUpgradeMarkerFile() bool {

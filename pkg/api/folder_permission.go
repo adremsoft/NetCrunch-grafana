@@ -1,18 +1,21 @@
 package api
 
 import (
+	"errors"
 	"time"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
+	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/dashboards"
 	"github.com/grafana/grafana/pkg/services/guardian"
+	"github.com/grafana/grafana/pkg/util"
 )
 
-func GetFolderPermissionList(c *m.ReqContext) Response {
+func (hs *HTTPServer) GetFolderPermissionList(c *models.ReqContext) response.Response {
 	s := dashboards.NewFolderService(c.OrgId, c.SignedInUser)
-	folder, err := s.GetFolderByUid(c.Params(":uid"))
+	folder, err := s.GetFolderByUID(c.Params(":uid"))
 
 	if err != nil {
 		return toFolderError(err)
@@ -21,29 +24,46 @@ func GetFolderPermissionList(c *m.ReqContext) Response {
 	g := guardian.New(folder.Id, c.OrgId, c.SignedInUser)
 
 	if canAdmin, err := g.CanAdmin(); err != nil || !canAdmin {
-		return toFolderError(m.ErrFolderAccessDenied)
+		return toFolderError(models.ErrFolderAccessDenied)
 	}
 
 	acl, err := g.GetAcl()
 	if err != nil {
-		return ApiError(500, "Failed to get folder permissions", err)
+		return response.Error(500, "Failed to get folder permissions", err)
 	}
 
+	filteredAcls := make([]*models.DashboardAclInfoDTO, 0, len(acl))
 	for _, perm := range acl {
+		if perm.UserId > 0 && dtos.IsHiddenUser(perm.UserLogin, c.SignedInUser, hs.Cfg) {
+			continue
+		}
+
 		perm.FolderId = folder.Id
 		perm.DashboardId = 0
 
-		if perm.Slug != "" {
-			perm.Url = m.GetDashboardFolderUrl(perm.IsFolder, perm.Uid, perm.Slug)
+		perm.UserAvatarUrl = dtos.GetGravatarUrl(perm.UserEmail)
+
+		if perm.TeamId > 0 {
+			perm.TeamAvatarUrl = dtos.GetGravatarUrlWithDefault(perm.TeamEmail, perm.Team)
 		}
+
+		if perm.Slug != "" {
+			perm.Url = models.GetDashboardFolderUrl(perm.IsFolder, perm.Uid, perm.Slug)
+		}
+
+		filteredAcls = append(filteredAcls, perm)
 	}
 
-	return Json(200, acl)
+	return response.JSON(200, filteredAcls)
 }
 
-func UpdateFolderPermissions(c *m.ReqContext, apiCmd dtos.UpdateDashboardAclCommand) Response {
+func (hs *HTTPServer) UpdateFolderPermissions(c *models.ReqContext, apiCmd dtos.UpdateDashboardAclCommand) response.Response {
+	if err := validatePermissionsUpdate(apiCmd); err != nil {
+		return response.Error(400, err.Error(), err)
+	}
+
 	s := dashboards.NewFolderService(c.OrgId, c.SignedInUser)
-	folder, err := s.GetFolderByUid(c.Params(":uid"))
+	folder, err := s.GetFolderByUID(c.Params(":uid"))
 
 	if err != nil {
 		return toFolderError(err)
@@ -56,18 +76,18 @@ func UpdateFolderPermissions(c *m.ReqContext, apiCmd dtos.UpdateDashboardAclComm
 	}
 
 	if !canAdmin {
-		return toFolderError(m.ErrFolderAccessDenied)
+		return toFolderError(models.ErrFolderAccessDenied)
 	}
 
-	cmd := m.UpdateDashboardAclCommand{}
-	cmd.DashboardId = folder.Id
+	cmd := models.UpdateDashboardAclCommand{}
+	cmd.DashboardID = folder.Id
 
 	for _, item := range apiCmd.Items {
-		cmd.Items = append(cmd.Items, &m.DashboardAcl{
-			OrgId:       c.OrgId,
-			DashboardId: folder.Id,
-			UserId:      item.UserId,
-			TeamId:      item.TeamId,
+		cmd.Items = append(cmd.Items, &models.DashboardAcl{
+			OrgID:       c.OrgId,
+			DashboardID: folder.Id,
+			UserID:      item.UserID,
+			TeamID:      item.TeamID,
 			Role:        item.Role,
 			Permission:  item.Permission,
 			Created:     time.Now(),
@@ -75,33 +95,43 @@ func UpdateFolderPermissions(c *m.ReqContext, apiCmd dtos.UpdateDashboardAclComm
 		})
 	}
 
-	if okToUpdate, err := g.CheckPermissionBeforeUpdate(m.PERMISSION_ADMIN, cmd.Items); err != nil || !okToUpdate {
+	hiddenACL, err := g.GetHiddenACL(hs.Cfg)
+	if err != nil {
+		return response.Error(500, "Error while retrieving hidden permissions", err)
+	}
+	cmd.Items = append(cmd.Items, hiddenACL...)
+
+	if okToUpdate, err := g.CheckPermissionBeforeUpdate(models.PERMISSION_ADMIN, cmd.Items); err != nil || !okToUpdate {
 		if err != nil {
-			if err == guardian.ErrGuardianPermissionExists ||
-				err == guardian.ErrGuardianOverride {
-				return ApiError(400, err.Error(), err)
+			if errors.Is(err, guardian.ErrGuardianPermissionExists) ||
+				errors.Is(err, guardian.ErrGuardianOverride) {
+				return response.Error(400, err.Error(), err)
 			}
 
-			return ApiError(500, "Error while checking folder permissions", err)
+			return response.Error(500, "Error while checking folder permissions", err)
 		}
 
-		return ApiError(403, "Cannot remove own admin permission for a folder", nil)
+		return response.Error(403, "Cannot remove own admin permission for a folder", nil)
 	}
 
 	if err := bus.Dispatch(&cmd); err != nil {
-		if err == m.ErrDashboardAclInfoMissing {
-			err = m.ErrFolderAclInfoMissing
+		if errors.Is(err, models.ErrDashboardAclInfoMissing) {
+			err = models.ErrFolderAclInfoMissing
 		}
-		if err == m.ErrDashboardPermissionDashboardEmpty {
-			err = m.ErrFolderPermissionFolderEmpty
-		}
-
-		if err == m.ErrFolderAclInfoMissing || err == m.ErrFolderPermissionFolderEmpty {
-			return ApiError(409, err.Error(), err)
+		if errors.Is(err, models.ErrDashboardPermissionDashboardEmpty) {
+			err = models.ErrFolderPermissionFolderEmpty
 		}
 
-		return ApiError(500, "Failed to create permission", err)
+		if errors.Is(err, models.ErrFolderAclInfoMissing) || errors.Is(err, models.ErrFolderPermissionFolderEmpty) {
+			return response.Error(409, err.Error(), err)
+		}
+
+		return response.Error(500, "Failed to create permission", err)
 	}
 
-	return ApiSuccess("Folder permissions updated")
+	return response.JSON(200, util.DynMap{
+		"message": "Folder permissions updated",
+		"id":      folder.Id,
+		"title":   folder.Title,
+	})
 }

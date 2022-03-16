@@ -1,42 +1,52 @@
 package conditions
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/grafana/grafana/pkg/tsdb/prometheus"
+
 	gocontext "context"
 
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/null"
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/alerting"
 	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana/pkg/util/errutil"
 )
 
 func init() {
 	alerting.RegisterCondition("query", func(model *simplejson.Json, index int) (alerting.Condition, error) {
-		return NewQueryCondition(model, index)
+		return newQueryCondition(model, index)
 	})
 }
 
+// QueryCondition is responsible for issue and query, reduce the
+// timeseries into single values and evaluate if they are firing or not.
 type QueryCondition struct {
 	Index         int
 	Query         AlertQuery
-	Reducer       QueryReducer
+	Reducer       *queryReducer
 	Evaluator     AlertEvaluator
 	Operator      string
 	HandleRequest tsdb.HandleRequestFunc
 }
 
+// AlertQuery contains information about what datasource a query
+// should be sent to and the query object.
 type AlertQuery struct {
 	Model        *simplejson.Json
-	DatasourceId int64
+	DatasourceID int64
 	From         string
 	To           string
 }
 
+// Eval evaluates the `QueryCondition`.
 func (c *QueryCondition) Eval(context *alerting.EvalContext) (*alerting.ConditionResult, error) {
 	timeRange := tsdb.NewTimeRange(c.Query.From, c.Query.To)
 
@@ -45,7 +55,7 @@ func (c *QueryCondition) Eval(context *alerting.EvalContext) (*alerting.Conditio
 		return nil, err
 	}
 
-	emptySerieCount := 0
+	emptySeriesCount := 0
 	evalMatchCount := 0
 	var matches []*alerting.EvalMatch
 
@@ -53,8 +63,8 @@ func (c *QueryCondition) Eval(context *alerting.EvalContext) (*alerting.Conditio
 		reducedValue := c.Reducer.Reduce(series)
 		evalMatch := c.Evaluator.Eval(reducedValue)
 
-		if reducedValue.Valid == false {
-			emptySerieCount++
+		if !reducedValue.Valid {
+			emptySeriesCount++
 		}
 
 		if context.IsTestRun {
@@ -93,32 +103,70 @@ func (c *QueryCondition) Eval(context *alerting.EvalContext) (*alerting.Conditio
 
 	return &alerting.ConditionResult{
 		Firing:      evalMatchCount > 0,
-		NoDataFound: emptySerieCount == len(seriesList),
+		NoDataFound: emptySeriesCount == len(seriesList),
 		Operator:    c.Operator,
 		EvalMatches: matches,
 	}, nil
 }
 
 func (c *QueryCondition) executeQuery(context *alerting.EvalContext, timeRange *tsdb.TimeRange) (tsdb.TimeSeriesSlice, error) {
-	getDsInfo := &m.GetDataSourceByIdQuery{
-		Id:    c.Query.DatasourceId,
-		OrgId: context.Rule.OrgId,
+	getDsInfo := &models.GetDataSourceQuery{
+		Id:    c.Query.DatasourceID,
+		OrgId: context.Rule.OrgID,
 	}
 
 	if err := bus.Dispatch(getDsInfo); err != nil {
-		return nil, fmt.Errorf("Could not find datasource %v", err)
+		return nil, fmt.Errorf("could not find datasource: %w", err)
 	}
 
-	req := c.getRequestForAlertRule(getDsInfo.Result, timeRange)
+	err := context.RequestValidator.Validate(getDsInfo.Result.Url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("access denied: %w", err)
+	}
+
+	req := c.getRequestForAlertRule(getDsInfo.Result, timeRange, context.IsDebug)
 	result := make(tsdb.TimeSeriesSlice, 0)
+
+	if context.IsDebug {
+		data := simplejson.New()
+		if req.TimeRange != nil {
+			data.Set("from", req.TimeRange.GetFromAsMsEpoch())
+			data.Set("to", req.TimeRange.GetToAsMsEpoch())
+		}
+
+		type queryDto struct {
+			RefID         string           `json:"refId"`
+			Model         *simplejson.Json `json:"model"`
+			Datasource    *simplejson.Json `json:"datasource"`
+			MaxDataPoints int64            `json:"maxDataPoints"`
+			IntervalMs    int64            `json:"intervalMs"`
+		}
+
+		queries := []*queryDto{}
+		for _, q := range req.Queries {
+			queries = append(queries, &queryDto{
+				RefID: q.RefId,
+				Model: q.Model,
+				Datasource: simplejson.NewFromAny(map[string]interface{}{
+					"id":   q.DataSource.Id,
+					"name": q.DataSource.Name,
+				}),
+				MaxDataPoints: q.MaxDataPoints,
+				IntervalMs:    q.IntervalMs,
+			})
+		}
+
+		data.Set("queries", queries)
+
+		context.Logs = append(context.Logs, &alerting.ResultLogEntry{
+			Message: fmt.Sprintf("Condition[%d]: Query", c.Index),
+			Data:    data,
+		})
+	}
 
 	resp, err := c.HandleRequest(context.Ctx, getDsInfo.Result, req)
 	if err != nil {
-		if err == gocontext.DeadlineExceeded {
-			return nil, fmt.Errorf("Alert execution exceeded the timeout")
-		}
-
-		return nil, fmt.Errorf("tsdb.HandleRequest() error %v", err)
+		return nil, toCustomError(err)
 	}
 
 	for _, v := range resp.Results {
@@ -126,12 +174,43 @@ func (c *QueryCondition) executeQuery(context *alerting.EvalContext, timeRange *
 			return nil, fmt.Errorf("tsdb.HandleRequest() response error %v", v)
 		}
 
-		result = append(result, v.Series...)
+		// If there are dataframes but no series on the result
+		useDataframes := v.Dataframes != nil && (v.Series == nil || len(v.Series) == 0)
+
+		if useDataframes { // convert the dataframes to tsdb.TimeSeries
+			frames, err := v.Dataframes.Decoded()
+			if err != nil {
+				return nil, errutil.Wrap("tsdb.HandleRequest() failed to unmarshal arrow dataframes from bytes", err)
+			}
+
+			for _, frame := range frames {
+				ss, err := FrameToSeriesSlice(frame)
+				if err != nil {
+					return nil, errutil.Wrapf(err, `tsdb.HandleRequest() failed to convert dataframe "%v" to tsdb.TimeSeriesSlice`, frame.Name)
+				}
+				result = append(result, ss...)
+			}
+		} else {
+			result = append(result, v.Series...)
+		}
+
+		queryResultData := map[string]interface{}{}
 
 		if context.IsTestRun {
+			queryResultData["series"] = result
+		}
+
+		if context.IsDebug && v.Meta != nil {
+			queryResultData["meta"] = v.Meta
+		}
+
+		if context.IsTestRun || context.IsDebug {
+			if useDataframes {
+				queryResultData["fromDataframe"] = true
+			}
 			context.Logs = append(context.Logs, &alerting.ResultLogEntry{
 				Message: fmt.Sprintf("Condition[%d]: Query Result", c.Index),
-				Data:    v.Series,
+				Data:    simplejson.NewFromAny(queryResultData),
 			})
 		}
 	}
@@ -139,31 +218,37 @@ func (c *QueryCondition) executeQuery(context *alerting.EvalContext, timeRange *
 	return result, nil
 }
 
-func (c *QueryCondition) getRequestForAlertRule(datasource *m.DataSource, timeRange *tsdb.TimeRange) *tsdb.TsdbQuery {
+func (c *QueryCondition) getRequestForAlertRule(datasource *models.DataSource, timeRange *tsdb.TimeRange, debug bool) *tsdb.TsdbQuery {
+	queryModel := c.Query.Model
 	req := &tsdb.TsdbQuery{
 		TimeRange: timeRange,
 		Queries: []*tsdb.Query{
 			{
 				RefId:      "A",
-				Model:      c.Query.Model,
+				Model:      queryModel,
 				DataSource: datasource,
+				QueryType:  queryModel.Get("queryType").MustString(""),
 			},
 		},
+		Headers: map[string]string{
+			"FromAlert": "true",
+		},
+		Debug: debug,
 	}
 
 	return req
 }
 
-func NewQueryCondition(model *simplejson.Json, index int) (*QueryCondition, error) {
+func newQueryCondition(model *simplejson.Json, index int) (*QueryCondition, error) {
 	condition := QueryCondition{}
 	condition.Index = index
 	condition.HandleRequest = tsdb.HandleRequest
 
-	queryJson := model.Get("query")
+	queryJSON := model.Get("query")
 
-	condition.Query.Model = queryJson.Get("model")
-	condition.Query.From = queryJson.Get("params").MustArray()[1].(string)
-	condition.Query.To = queryJson.Get("params").MustArray()[2].(string)
+	condition.Query.Model = queryJSON.Get("model")
+	condition.Query.From = queryJSON.Get("params").MustArray()[1].(string)
+	condition.Query.To = queryJSON.Get("params").MustArray()[2].(string)
 
 	if err := validateFromValue(condition.Query.From); err != nil {
 		return nil, err
@@ -173,20 +258,20 @@ func NewQueryCondition(model *simplejson.Json, index int) (*QueryCondition, erro
 		return nil, err
 	}
 
-	condition.Query.DatasourceId = queryJson.Get("datasourceId").MustInt64()
+	condition.Query.DatasourceID = queryJSON.Get("datasourceId").MustInt64()
 
-	reducerJson := model.Get("reducer")
-	condition.Reducer = NewSimpleReducer(reducerJson.Get("type").MustString())
+	reducerJSON := model.Get("reducer")
+	condition.Reducer = newSimpleReducer(reducerJSON.Get("type").MustString())
 
-	evaluatorJson := model.Get("evaluator")
-	evaluator, err := NewAlertEvaluator(evaluatorJson)
+	evaluatorJSON := model.Get("evaluator")
+	evaluator, err := NewAlertEvaluator(evaluatorJSON)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error in condition %v: %v", index, err)
 	}
 	condition.Evaluator = evaluator
 
-	operatorJson := model.Get("operator")
-	operator := operatorJson.Get("type").MustString("and")
+	operatorJSON := model.Get("operator")
+	operator := operatorJSON.Get("type").MustString("and")
 	condition.Operator = operator
 
 	return &condition, nil
@@ -213,4 +298,88 @@ func validateToValue(to string) error {
 
 	_, err := time.ParseDuration(to)
 	return err
+}
+
+// FrameToSeriesSlice converts a frame that is a valid time series as per data.TimeSeriesSchema()
+// to a TimeSeriesSlice.
+func FrameToSeriesSlice(frame *data.Frame) (tsdb.TimeSeriesSlice, error) {
+	tsSchema := frame.TimeSeriesSchema()
+	if tsSchema.Type == data.TimeSeriesTypeNot {
+		// If no fields, or only a time field, create an empty tsdb.TimeSeriesSlice with a single
+		// time series in order to trigger "no data" in alerting.
+		if len(frame.Fields) == 0 || (len(frame.Fields) == 1 && frame.Fields[0].Type().Time()) {
+			return tsdb.TimeSeriesSlice{{
+				Name:   frame.Name,
+				Points: make(tsdb.TimeSeriesPoints, 0),
+			}}, nil
+		}
+		return nil, fmt.Errorf("input frame is not recognized as a time series")
+	}
+
+	seriesCount := len(tsSchema.ValueIndices)
+	seriesSlice := make(tsdb.TimeSeriesSlice, 0, seriesCount)
+	timeField := frame.Fields[tsSchema.TimeIndex]
+	timeNullFloatSlice := make([]null.Float, timeField.Len())
+
+	for i := 0; i < timeField.Len(); i++ { // built slice of time as epoch ms in null floats
+		tStamp, err := timeField.FloatAt(i)
+		if err != nil {
+			return nil, err
+		}
+		timeNullFloatSlice[i] = null.FloatFrom(tStamp)
+	}
+
+	for _, fieldIdx := range tsSchema.ValueIndices { // create a TimeSeries for each value Field
+		field := frame.Fields[fieldIdx]
+		ts := &tsdb.TimeSeries{
+			Points: make(tsdb.TimeSeriesPoints, field.Len()),
+		}
+
+		if len(field.Labels) > 0 {
+			ts.Tags = field.Labels.Copy()
+		}
+
+		switch {
+		case field.Config != nil && field.Config.DisplayName != "":
+			ts.Name = field.Config.DisplayName
+		case field.Config != nil && field.Config.DisplayNameFromDS != "":
+			ts.Name = field.Config.DisplayNameFromDS
+		case len(field.Labels) > 0:
+			// Tags are appended to the name so they are eventually included in EvalMatch's Metric property
+			// for display in notifications.
+			ts.Name = fmt.Sprintf("%v {%v}", field.Name, field.Labels.String())
+		default:
+			ts.Name = field.Name
+		}
+
+		for rowIdx := 0; rowIdx < field.Len(); rowIdx++ { // for each value in the field, make a TimePoint
+			val, err := field.FloatAt(rowIdx)
+			if err != nil {
+				return nil, errutil.Wrapf(err, "failed to convert frame to tsdb.series, can not convert value %v to float", field.At(rowIdx))
+			}
+			ts.Points[rowIdx] = tsdb.TimePoint{
+				null.FloatFrom(val),
+				timeNullFloatSlice[rowIdx],
+			}
+		}
+
+		seriesSlice = append(seriesSlice, ts)
+	}
+
+	return seriesSlice, nil
+}
+
+func toCustomError(err error) error {
+	// is context timeout
+	if errors.Is(err, gocontext.DeadlineExceeded) {
+		return fmt.Errorf("alert execution exceeded the timeout")
+	}
+
+	// is Prometheus error
+	if prometheus.IsAPIError(err) {
+		return prometheus.ConvertAPIError(err)
+	}
+
+	// generic fallback
+	return fmt.Errorf("tsdb.HandleRequest() error %v", err)
 }

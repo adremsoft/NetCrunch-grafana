@@ -3,8 +3,8 @@ package config
 import (
   "path/filepath"
   "gopkg.in/ini.v1"
-  "github.com/grafana/grafana/pkg/log"
-  "github.com/grafana/grafana/pkg/setting"
+  "github.com/grafana/grafana/pkg/infra/log"
+//   "github.com/grafana/grafana/pkg/setting"
   "github.com/grafana/grafana/pkg/netcrunch/fileUtils"
 )
 
@@ -23,7 +23,7 @@ func CreateDefaultStatusesFile() (bool) {
   iLog := log.New("GrafCrunch statuses creator")
   statusesFilePath := getStatusesFilePath()
 
-  if (!setting.PathExists(statusesFilePath)) {
+  if (!fileUtils.PathExists(statusesFilePath)) {
     if (!fileUtils.SaveIniFile(getDefaultStatusesFile(), statusesFilePath)) {
       iLog.Info("Statuses creation error")
       return false;

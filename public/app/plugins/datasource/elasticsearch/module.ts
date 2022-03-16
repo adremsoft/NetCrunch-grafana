@@ -1,19 +1,13 @@
+import { DataSourcePlugin } from '@grafana/data';
 import { ElasticDatasource } from './datasource';
-import { ElasticQueryCtrl } from './query_ctrl';
-import { ElasticConfigCtrl } from './config_ctrl';
-
-class ElasticQueryOptionsCtrl {
-  static templateUrl = 'partials/query.options.html';
-}
+import { ConfigEditor } from './configuration/ConfigEditor';
+import { QueryEditor } from './components/QueryEditor';
 
 class ElasticAnnotationsQueryCtrl {
   static templateUrl = 'partials/annotations.editor.html';
 }
 
-export {
-  ElasticDatasource as Datasource,
-  ElasticQueryCtrl as QueryCtrl,
-  ElasticConfigCtrl as ConfigCtrl,
-  ElasticQueryOptionsCtrl as QueryOptionsCtrl,
-  ElasticAnnotationsQueryCtrl as AnnotationsQueryCtrl,
-};
+export const plugin = new DataSourcePlugin(ElasticDatasource)
+  .setQueryEditor(QueryEditor)
+  .setConfigEditor(ConfigEditor)
+  .setAnnotationQueryCtrl(ElasticAnnotationsQueryCtrl);

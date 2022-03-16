@@ -3,8 +3,8 @@ package notifiers
 import (
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	"github.com/grafana/grafana/pkg/log"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/alerting"
 )
 
@@ -13,79 +13,109 @@ func init() {
 		Type:        "webhook",
 		Name:        "webhook",
 		Description: "Sends HTTP POST request to a URL",
+		Heading:     "Webhook settings",
 		Factory:     NewWebHookNotifier,
-		OptionsTemplate: `
-      <h3 class="page-heading">Webhook settings</h3>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Url</span>
-        <input type="text" required class="gf-form-input max-width-26" ng-model="ctrl.model.settings.url"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Http Method</span>
-        <div class="gf-form-select-wrapper width-14">
-          <select class="gf-form-input" ng-model="ctrl.model.settings.httpMethod" ng-options="t for t in ['POST', 'PUT']">
-          </select>
-        </div>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Username</span>
-        <input type="text" class="gf-form-input max-width-14" ng-model="ctrl.model.settings.username"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Password</span>
-        <input type="text" class="gf-form-input max-width-14" ng-model="ctrl.model.settings.password"></input>
-      </div>
-    `,
+		Options: []alerting.NotifierOption{
+			{
+				Label:        "Url",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				PropertyName: "url",
+				Required:     true,
+			},
+			{
+				Label:   "Http Method",
+				Element: alerting.ElementTypeSelect,
+				SelectOptions: []alerting.SelectOption{
+					{
+						Value: "POST",
+						Label: "POST",
+					},
+					{
+						Value: "PUT",
+						Label: "PUT",
+					},
+				},
+				PropertyName: "httpMethod",
+			},
+			{
+				Label:        "Username",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				PropertyName: "username",
+			},
+			{
+				Label:        "Password",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypePassword,
+				PropertyName: "password",
+				Secure:       true,
+			},
+		},
 	})
-
 }
 
-func NewWebHookNotifier(model *m.AlertNotification) (alerting.Notifier, error) {
+// NewWebHookNotifier is the constructor for
+// the WebHook notifier.
+func NewWebHookNotifier(model *models.AlertNotification) (alerting.Notifier, error) {
 	url := model.Settings.Get("url").MustString()
 	if url == "" {
 		return nil, alerting.ValidationError{Reason: "Could not find url property in settings"}
 	}
 
+	password := model.DecryptedValue("password", model.Settings.Get("password").MustString())
+
 	return &WebhookNotifier{
-		NotifierBase: NewNotifierBase(model.Id, model.IsDefault, model.Name, model.Type, model.Settings),
-		Url:          url,
+		NotifierBase: NewNotifierBase(model),
+		URL:          url,
 		User:         model.Settings.Get("username").MustString(),
-		Password:     model.Settings.Get("password").MustString(),
-		HttpMethod:   model.Settings.Get("httpMethod").MustString("POST"),
+		Password:     password,
+		HTTPMethod:   model.Settings.Get("httpMethod").MustString("POST"),
 		log:          log.New("alerting.notifier.webhook"),
 	}, nil
 }
 
+// WebhookNotifier is responsible for sending
+// alert notifications as webhooks.
 type WebhookNotifier struct {
 	NotifierBase
-	Url        string
+	URL        string
 	User       string
 	Password   string
-	HttpMethod string
+	HTTPMethod string
 	log        log.Logger
 }
 
-func (this *WebhookNotifier) ShouldNotify(context *alerting.EvalContext) bool {
-	return defaultShouldNotify(context)
-}
-
-func (this *WebhookNotifier) Notify(evalContext *alerting.EvalContext) error {
-	this.log.Info("Sending webhook")
+// Notify send alert notifications as
+// webhook as http requests.
+func (wn *WebhookNotifier) Notify(evalContext *alerting.EvalContext) error {
+	wn.log.Info("Sending webhook")
 
 	bodyJSON := simplejson.New()
 	bodyJSON.Set("title", evalContext.GetNotificationTitle())
-	bodyJSON.Set("ruleId", evalContext.Rule.Id)
+	bodyJSON.Set("ruleId", evalContext.Rule.ID)
 	bodyJSON.Set("ruleName", evalContext.Rule.Name)
 	bodyJSON.Set("state", evalContext.Rule.State)
 	bodyJSON.Set("evalMatches", evalContext.EvalMatches)
+	bodyJSON.Set("orgId", evalContext.Rule.OrgID)
+	bodyJSON.Set("dashboardId", evalContext.Rule.DashboardID)
+	bodyJSON.Set("panelId", evalContext.Rule.PanelID)
 
-	ruleUrl, err := evalContext.GetRuleUrl()
-	if err == nil {
-		bodyJSON.Set("ruleUrl", ruleUrl)
+	tags := make(map[string]string)
+
+	for _, tag := range evalContext.Rule.AlertRuleTags {
+		tags[tag.Key] = tag.Value
 	}
 
-	if evalContext.ImagePublicUrl != "" {
-		bodyJSON.Set("imageUrl", evalContext.ImagePublicUrl)
+	bodyJSON.Set("tags", tags)
+
+	ruleURL, err := evalContext.GetRuleURL()
+	if err == nil {
+		bodyJSON.Set("ruleUrl", ruleURL)
+	}
+
+	if wn.NeedsImage() && evalContext.ImagePublicURL != "" {
+		bodyJSON.Set("imageUrl", evalContext.ImagePublicURL)
 	}
 
 	if evalContext.Rule.Message != "" {
@@ -94,16 +124,16 @@ func (this *WebhookNotifier) Notify(evalContext *alerting.EvalContext) error {
 
 	body, _ := bodyJSON.MarshalJSON()
 
-	cmd := &m.SendWebhookSync{
-		Url:        this.Url,
-		User:       this.User,
-		Password:   this.Password,
+	cmd := &models.SendWebhookSync{
+		Url:        wn.URL,
+		User:       wn.User,
+		Password:   wn.Password,
 		Body:       string(body),
-		HttpMethod: this.HttpMethod,
+		HttpMethod: wn.HTTPMethod,
 	}
 
 	if err := bus.DispatchCtx(evalContext.Ctx, cmd); err != nil {
-		this.log.Error("Failed to send webhook", "error", err, "webhook", this.Name)
+		wn.log.Error("Failed to send webhook", "error", err, "webhook", wn.Name)
 		return err
 	}
 

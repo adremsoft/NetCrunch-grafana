@@ -11,9 +11,7 @@ import (
 )
 
 func TestInfluxdbQueryBuilder(t *testing.T) {
-
 	Convey("Influxdb query builder", t, func() {
-
 		qp1, _ := NewQueryPart("field", []string{"value"})
 		qp2, _ := NewQueryPart("mean", []string{})
 
@@ -45,6 +43,20 @@ func TestInfluxdbQueryBuilder(t *testing.T) {
 			rawQuery, err := query.Build(queryContext)
 			So(err, ShouldBeNil)
 			So(rawQuery, ShouldEqual, `SELECT mean("value") FROM "policy"."cpu" WHERE time > now() - 5m GROUP BY time(10s) fill(null)`)
+		})
+
+		Convey("can build query with tz", func() {
+			query := &Query{
+				Selects:     []*Select{{*qp1, *qp2}},
+				Measurement: "cpu",
+				GroupBy:     []*QueryPart{groupBy1},
+				Tz:          "Europe/Paris",
+				Interval:    time.Second * 5,
+			}
+
+			rawQuery, err := query.Build(queryContext)
+			So(err, ShouldBeNil)
+			So(rawQuery, ShouldEqual, `SELECT mean("value") FROM "cpu" WHERE time > now() - 5m GROUP BY time(5s) tz('Europe/Paris')`)
 		})
 
 		Convey("can build query with group bys", func() {
@@ -158,7 +170,7 @@ func TestInfluxdbQueryBuilder(t *testing.T) {
 			So(strings.Join(query.renderTags(), ""), ShouldEqual, `"key" < 10001`)
 		})
 
-		Convey("can render number greather then condition tags", func() {
+		Convey("can render number greater then condition tags", func() {
 			query := &Query{Tags: []*Tag{{Operator: ">", Value: "10001", Key: "key"}}}
 
 			So(strings.Join(query.renderTags(), ""), ShouldEqual, `"key" > 10001`)
@@ -188,5 +200,4 @@ func TestInfluxdbQueryBuilder(t *testing.T) {
 			So(query.renderMeasurement(), ShouldEqual, ` FROM "policy"./apa/`)
 		})
 	})
-
 }

@@ -3,16 +3,17 @@
   "name": "Plugin list",
   "id": "pluginlist",
 
+  "skipDataQuery": true,
+
   "info": {
     "description": "Plugin List for Grafana",
     "author": {
-      "name": "Grafana Project",
+      "name": "Grafana Labs",
       "url": "https://grafana.com"
     },
     "logos": {
       "small": "img/icn-dashlist-panel.svg",
       "large": "img/icn-dashlist-panel.svg"
-    },
-    "version": "5.0.0"
+    }
   }
 }

@@ -5,22 +5,45 @@ import (
   "strings"
   "errors"
   "io/ioutil"
-  "path/filepath"
+//   "path/filepath"
   "gopkg.in/ini.v1"
   "github.com/grafana/grafana/pkg/setting"
 )
 
-func GetGrafCrunchDataPath() string {
-  GrafCrunchDataBasePath := setting.Cfg.Section("paths").Key("data").String()
+var (
+	GrafCrunchDataBasePath string
+)
 
-  if (!filepath.IsAbs(GrafCrunchDataBasePath)) {
-    GrafCrunchDataBasePath = filepath.Join(setting.HomePath, GrafCrunchDataBasePath)
-  }
+func Init(cfg *setting.Cfg) {
+  GrafCrunchDataBasePath = cfg.DataPath
+//   if (!filepath.IsAbs(GrafCrunchDataBasePath)) {
+//     GrafCrunchDataBasePath = filepath.Join(setting.Cfg.HomePath, GrafCrunchDataBasePath)
+//   }
+}
+
+func GetGrafCrunchDataPath() string {
+//   GrafCrunchDataBasePath := setting.Cfg.DataPath
+// //   GrafCrunchDataBasePath := setting.Cfg.Section("paths").Key("data").String()
+//
+//   if (!filepath.IsAbs(GrafCrunchDataBasePath)) {
+//     GrafCrunchDataBasePath = filepath.Join(setting.HomePath, GrafCrunchDataBasePath)
+//   }
   return GrafCrunchDataBasePath
 }
 
+func PathExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return false
+}
+
 func LoadFile (filePath string) ([]byte, error) {
-  if (setting.PathExists(filePath)) {
+  if (PathExists(filePath)) {
     content, err := ioutil.ReadFile(filePath)
     if (err == nil) {
       return content, nil

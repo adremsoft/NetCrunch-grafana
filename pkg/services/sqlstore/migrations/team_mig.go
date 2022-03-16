@@ -37,6 +37,7 @@ func addTeamMigrations(mg *Migrator) {
 		Indices: []*Index{
 			{Cols: []string{"org_id"}},
 			{Cols: []string{"org_id", "team_id", "user_id"}, Type: UniqueIndex},
+			{Cols: []string{"team_id"}},
 		},
 	}
 
@@ -45,9 +46,18 @@ func addTeamMigrations(mg *Migrator) {
 	//-------  indexes ------------------
 	mg.AddMigration("add index team_member.org_id", NewAddIndexMigration(teamMemberV1, teamMemberV1.Indices[0]))
 	mg.AddMigration("add unique index team_member_org_id_team_id_user_id", NewAddIndexMigration(teamMemberV1, teamMemberV1.Indices[1]))
+	mg.AddMigration("add index team_member.team_id", NewAddIndexMigration(teamMemberV1, teamMemberV1.Indices[2]))
 
 	// add column email
 	mg.AddMigration("Add column email to team table", NewAddColumnMigration(teamV1, &Column{
 		Name: "email", Type: DB_NVarchar, Nullable: true, Length: 190,
+	}))
+
+	mg.AddMigration("Add column external to team_member table", NewAddColumnMigration(teamMemberV1, &Column{
+		Name: "external", Type: DB_Bool, Nullable: true,
+	}))
+
+	mg.AddMigration("Add column permission to team_member table", NewAddColumnMigration(teamMemberV1, &Column{
+		Name: "permission", Type: DB_SmallInt, Nullable: true,
 	}))
 }

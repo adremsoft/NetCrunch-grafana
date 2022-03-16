@@ -1,77 +1,67 @@
 +++
-title = "Installing on Mac"
-description = "Installing Grafana on Mac"
+title = "Install on macOS"
+description = "Installing Grafana on macOS"
 keywords = ["grafana", "configuration", "documentation", "mac", "homebrew", "osx"]
-type = "docs"
-[menu.docs]
-parent = "installation"
-weight = 4
+weight = 500
 +++
 
+# Install on macOS
 
-# Installing on Mac
+This page explains how to install Grafana and get the service running on your macOS.
 
-Installation can be done using [homebrew](http://brew.sh/)
+**Note on upgrading:** While the process for upgrading Grafana is very similar to installing Grafana, there are some key backup steps you should perform. Before you perform an upgrade, read [Upgrading Grafana]({{< relref "upgrading.md" >}}) for tips and guidance on updating an existing installation.
 
-Install latest stable:
+## Install with Homebrew
 
-```bash
-brew update
-brew install grafana
-```
+Use [Homebrew](http://brew.sh/) to install the most recent released version of Grafana using Homebrew package.
 
-To start grafana look at the command printed after the homebrew install completes.
+1. On the Homebrew homepage, search for Grafana. The last stable and released version is listed.
+1. Open a terminal and enter:
+    ```
+   brew update
+   brew install grafana
+   ```
 
-To upgrade use the reinstall command
+   The brew page downloads and untars the files into `/usr/local/Cellar/grafana/version`.
+
+1. Start Grafana using the command:
+   ```bash
+   brew services start grafana
+   ```
+
+## Install standalone macOS binaries
+
+To install a nightly build, or to install the latest version of Grafana  without Homebrew, go to the [Grafana download page](https://grafana.com/grafana/download/7.3.0-381ff45epre?platform=mac).
+
+1. Select the Grafana version you want to install. By default, the most recent released version is selected.
+
+   > **Note:** The downloads page lists only finished releases. If you want to install a beta version, click [Nightly ] **Nightly Builds** and then select a version.
+
+1. Select an **Edition**.
+   * **Open Source** - Functionally identical to the enterprise version, but you will need to download the enterprise version if you want enterprise features.
+   * **Enterprise** - Recommended download. Functionally identical to the open source version, but includes features you can unlock with a license if you so choose.
+1. Click **Mac**.
+1. Open a terminal and download the binary using the cURL command. The following example shows Grafana 7.1.5 version:
+   ```bash
+   curl -O https://dl.grafana.com/oss/release/grafana-7.1.5.darwin-amd64.tar.gz
+      ```
+1.  Untar the gz file and copy the files to the location of your preference.
+1.  To start Grafana service, go to the directory and run the command:
+      ```bash
+      ./bin/grafana-server web
+      ```
+
+## Next steps
+
+Refer to the [Getting Started]({{< relref "../getting-started/getting-started/" >}}) guide for information about logging in, setting up data sources, and so on. Also, refer to the [Configuration]({{< relref "../administration/configuration.md" >}}) page for details on options for customizing your environment, logging, database, and so on.
+
+## Upgrade
+
+**Using Homebrew**
+
+To upgrade Grafana, use the reinstall command:
 
 ```bash
 brew update
 brew reinstall grafana
 ```
-
--------------
-
-You can also install the latest unstable grafana from git:
-
-
-```bash
-brew install --HEAD grafana/grafana/grafana
-```
-
-To upgrade grafana if you've installed from HEAD:
-
-```bash
-brew reinstall --HEAD grafana/grafana/grafana
-```
-
-### Starting Grafana
-
-To start Grafana using homebrew services first make sure homebrew/services is installed.
-
-```bash
-brew tap homebrew/services
-```
-
-Then start Grafana using:
-
-```bash
-brew services start grafana
-```
-
-
-### Configuration
-
-The Configuration file should be located at `/usr/local/etc/grafana/grafana.ini`.
-
-### Logs
-
-The log file should be located at `/usr/local/var/log/grafana/grafana.log`.
-
-### Plugins
-
-If you want to manually install a plugin place it here: `/usr/local/var/lib/grafana/plugins`.
-
-### Database
-
-The default sqlite database is located at `/usr/local/var/lib/grafana`
-

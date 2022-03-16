@@ -1,6 +1,7 @@
 import coreModule from 'app/core/core_module';
+import { backendSrv } from '../services/backend_srv';
 
-var template = `
+const template = `
 <select class="gf-form-input" ng-model="ctrl.model" ng-options="f.value as f.text for f in ctrl.options"></select>
 `;
 
@@ -8,14 +9,11 @@ export class DashboardSelectorCtrl {
   model: any;
   options: any;
 
-  /** @ngInject */
-  constructor(private backendSrv) {}
-
   $onInit() {
     this.options = [{ value: 0, text: 'Default' }];
 
-    return this.backendSrv.search({ starred: true }).then(res => {
-      res.forEach(dash => {
+    return backendSrv.search({ starred: true }).then((res) => {
+      res.forEach((dash) => {
         this.options.push({ value: dash.id, text: dash.title });
       });
     });

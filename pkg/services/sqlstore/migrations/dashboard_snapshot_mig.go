@@ -50,9 +50,7 @@ func addDashboardSnapshotMigrations(mg *Migrator) {
 	addTableIndicesMigrations(mg, "v5", snapshotV5)
 
 	// change column type of dashboard
-	mg.AddMigration("alter dashboard_snapshot to mediumtext v2", new(RawSqlMigration).
-		Sqlite("SELECT 0 WHERE 0;").
-		Postgres("SELECT 0;").
+	mg.AddMigration("alter dashboard_snapshot to mediumtext v2", NewRawSQLMigration("").
 		Mysql("ALTER TABLE dashboard_snapshot MODIFY dashboard MEDIUMTEXT;"))
 
 	mg.AddMigration("Update dashboard_snapshot table charset", NewTableCharsetMigration("dashboard_snapshot", []*Column{
@@ -62,4 +60,15 @@ func addDashboardSnapshotMigrations(mg *Migrator) {
 		{Name: "external_url", Type: DB_NVarchar, Length: 255, Nullable: false},
 		{Name: "dashboard", Type: DB_MediumText, Nullable: false},
 	}))
+
+	mg.AddMigration("Add column external_delete_url to dashboard_snapshots table", NewAddColumnMigration(snapshotV5, &Column{
+		Name: "external_delete_url", Type: DB_NVarchar, Length: 255, Nullable: true,
+	}))
+
+	mg.AddMigration("Add encrypted dashboard json column", NewAddColumnMigration(snapshotV5, &Column{
+		Name: "dashboard_encrypted", Type: DB_Blob, Nullable: true,
+	}))
+
+	mg.AddMigration("Change dashboard_encrypted column to MEDIUMBLOB", NewRawSQLMigration("").
+		Mysql("ALTER TABLE dashboard_snapshot MODIFY dashboard_encrypted MEDIUMBLOB;"))
 }

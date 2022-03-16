@@ -1,13 +1,8 @@
 {
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/master/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
   "name": "NetCrunch",
   "id": "adremsoft-netcrunch-app",
-
-  "css": {
-    "dark": "css/dark.css",
-    "light": "css/light.css"
-  },
-
   "info": {
     "description": "NetCrunch App for Grafana",
     "author": {
@@ -25,16 +20,16 @@
       {"name": "License & Terms", "url": "https://github.com/adremsoft/grafana-netcrunch-plugin/blob/grafCrunch/LICENSE"},
       {"name": "NetCrunch Documentation", "url": "https://www.adremsoft.com/adoc/view/netcrunch/"}
     ],
-    "version": "2.12.0",
-    "updated": "2020-12-15"
+    "screenshots": [],
+    "version": "3.0.0",
+    "updated": "2022-03-10"
   },
-
   "includes": [
     {"type": "datasource", "name": "NetCrunch"},
     {"type": "dashboard",
-     "name": "Windows Workstation Template",
-     "path": "dashboards/windows-workstation-template.json",
-     "addToNav": true
+      "name": "Windows Workstation Template",
+      "path": "dashboards/windows-workstation-template.json",
+      "addToNav": true
     },
     {"type": "dashboard",
       "name": "Windows Server Template",
@@ -52,9 +47,9 @@
       "addToNav": true
     }
   ],
-
   "dependencies": {
-    "grafanaVersion": "5.x.x",
+    "grafanaDependency": ">=7.0.0",
+    "grafanaVersion": "7.0.0",
     "plugins": []
   }
 }

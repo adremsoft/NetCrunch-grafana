@@ -19,6 +19,10 @@
   outline-offset: -2px;
 }
 
+@mixin no-focus() {
+  outline: none;
+}
+
 // Center-align a block level element
 // ----------------------------------
 @mixin center-block() {
@@ -40,14 +44,8 @@
 
 // Placeholder text
 // -------------------------
-@mixin placeholder($color: $placeholderText) {
-  &:-moz-placeholder {
-    color: $color;
-  }
-  &:-ms-input-placeholder {
-    color: $color;
-  }
-  &::-webkit-input-placeholder {
+@mixin placeholder($color: $input-color-placeholder) {
+  &::placeholder {
     color: $color;
   }
 }
@@ -75,10 +73,6 @@
 // FONTS
 // --------------------------------------------------
 
-@mixin font-family-serif() {
-  font-family: $font-family-serif;
-}
-
 @mixin font-family-sans-serif() {
   font-family: $font-family-sans-serif;
 }
@@ -91,11 +85,6 @@
   font-size: $size;
   font-weight: $weight;
   line-height: $lineHeight;
-}
-
-@mixin font-serif($size: $font-size-base, $weight: normal, $lineHeight: $line-height-base) {
-  @include font-family-serif();
-  @include font-shorthand($size, $weight, $lineHeight);
 }
 
 @mixin font-sans-serif($size: $font-size-base, $weight: normal, $lineHeight: $line-height-base) {
@@ -274,7 +263,7 @@
 }
 
 // Gradient Bar Colors for buttons and alerts
-@mixin gradientBar($primaryColor, $secondaryColor, $text-color: #fff, $textShadow: 0 -1px 0 rgba(0,0,0,0.25)) {
+@mixin gradientBar($primaryColor, $secondaryColor, $text-color: #fff, $textShadow: 0 -1px 0 rgba(0, 0, 0, 0.25)) {
   color: $text-color;
   text-shadow: $textShadow;
   @include gradient-vertical($primaryColor, $secondaryColor);
@@ -287,21 +276,25 @@
   background-image: linear-gradient(to right, $startColor, $endColor); // Standard, IE10
   background-repeat: repeat-x;
 }
+
 @mixin gradient-vertical($startColor: #555, $endColor: #333) {
   background-color: mix($startColor, $endColor, 60%);
   background-image: linear-gradient(to bottom, $startColor, $endColor); // Standard, IE10
   background-repeat: repeat-x;
 }
+
 @mixin gradient-directional($startColor: #555, $endColor: #333, $deg: 45deg) {
   background-color: $endColor;
   background-repeat: repeat-x;
   background-image: linear-gradient($deg, $startColor, $endColor); // Standard, IE10
 }
+
 @mixin gradient-horizontal-three-colors($startColor: #00b3ee, $midColor: #7a43b6, $colorStop: 50%, $endColor: #c3325f) {
   background-color: mix($midColor, $endColor, 80%);
   background-image: linear-gradient(to right, $startColor, $midColor $colorStop, $endColor);
   background-repeat: no-repeat;
 }
+
 @mixin gradient-vertical-three-colors($startColor: #00b3ee, $midColor: #7a43b6, $colorStop: 50%, $endColor: #c3325f) {
   background-color: mix($midColor, $endColor, 80%);
   background-image: linear-gradient($startColor, $midColor $colorStop, $endColor);
@@ -316,6 +309,7 @@
   background-image: -o-radial-gradient(circle, $innerColor, $outerColor);
   background-repeat: no-repeat;
 }
+
 @mixin striped($color: #555, $angle: 45deg) {
   background-color: $color;
   background-image: linear-gradient(
@@ -329,12 +323,13 @@
     transparent
   );
 }
+
 @mixin left-brand-border($color: transparent) {
   border-left: 2px solid $color;
 }
+
 @mixin left-brand-border-gradient() {
-  border: none;
-  border-image: linear-gradient(rgba(255, 213, 0, 1) 0%, rgba(255, 68, 0, 1) 99%, rgba(255, 68, 0, 1) 100%);
+  border-image: $brand-gradient-vertical;
   border-image-slice: 1;
   border-style: solid;
   border-top: 0;
@@ -342,8 +337,9 @@
   border-bottom: 0;
   border-left-width: 2px;
 }
+
 @mixin brand-bottom-border() {
-  border-image: $brand-gradient;
+  border-image: $brand-gradient-horizontal;
   border-image-slice: 1;
   border-style: solid;
   border-top: 0;
@@ -351,15 +347,24 @@
   border-left: 0;
   border-bottom-width: 1px;
 }
+
 @mixin list-item() {
   display: block;
   margin: 3px;
   padding: 7px;
   background: $list-item-bg;
   box-shadow: $list-item-shadow;
-  color: $list-item-link-color;
+  border-radius: $border-radius;
+
   &:hover {
     background: $list-item-hover-bg;
-    color: $list-item-link-color;
+  }
+}
+
+@function lightOrDark($lightColor, $darkColor) {
+  @if (lightness($text-color) < 50) {
+    @return $lightColor;
+  } @else {
+    @return $darkColor;
   }
 }

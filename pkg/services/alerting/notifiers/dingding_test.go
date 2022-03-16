@@ -1,10 +1,14 @@
 package notifiers
 
 import (
+	"context"
 	"testing"
 
+	"github.com/grafana/grafana/pkg/services/validations"
+
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/alerting"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -14,34 +18,42 @@ func TestDingDingNotifier(t *testing.T) {
 			json := `{ }`
 
 			settingsJSON, _ := simplejson.NewJson([]byte(json))
-			model := &m.AlertNotification{
+			model := &models.AlertNotification{
 				Name:     "dingding_testing",
 				Type:     "dingding",
 				Settings: settingsJSON,
 			}
 
-			_, err := NewDingDingNotifier(model)
+			_, err := newDingDingNotifier(model)
 			So(err, ShouldNotBeNil)
-
 		})
 		Convey("settings should trigger incident", func() {
 			json := `{ "url": "https://www.google.com" }`
 
 			settingsJSON, _ := simplejson.NewJson([]byte(json))
-			model := &m.AlertNotification{
+			model := &models.AlertNotification{
 				Name:     "dingding_testing",
 				Type:     "dingding",
 				Settings: settingsJSON,
 			}
 
-			not, err := NewDingDingNotifier(model)
+			not, err := newDingDingNotifier(model)
 			notifier := not.(*DingDingNotifier)
 
 			So(err, ShouldBeNil)
 			So(notifier.Name, ShouldEqual, "dingding_testing")
 			So(notifier.Type, ShouldEqual, "dingding")
-			So(notifier.Url, ShouldEqual, "https://www.google.com")
-		})
+			So(notifier.URL, ShouldEqual, "https://www.google.com")
 
+			Convey("genBody should not panic", func() {
+				evalContext := alerting.NewEvalContext(context.Background(),
+					&alerting.Rule{
+						State:   models.AlertStateAlerting,
+						Message: `{host="localhost"}`,
+					}, &validations.OSSPluginRequestValidator{})
+				_, err = notifier.genBody(evalContext, "")
+				So(err, ShouldBeNil)
+			})
+		})
 	})
 }

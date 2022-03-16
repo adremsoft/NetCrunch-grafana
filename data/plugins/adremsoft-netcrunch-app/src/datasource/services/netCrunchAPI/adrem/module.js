@@ -18,7 +18,7 @@ const
   adremClient = `${adremModuleUrl}client.min.js`,
   remoteDataLists = `${adremModuleUrl}RemoteDataLists.min.js`;
 
-function importAdremClient() {
+async function importAdremClient() {
   return SystemJS.import(adremClient).then(adrem => SystemJS.import(remoteDataLists).then(() => {
     adrem.useWebSockets = false; // disable web socket as it will not work with Grafana proxy
     adrem.defaultRequestTimeout = 60 * 1000; // Set longer timeout for requests

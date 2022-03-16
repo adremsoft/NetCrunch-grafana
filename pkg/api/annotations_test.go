@@ -1,174 +1,242 @@
 package api
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
+	"github.com/grafana/grafana/pkg/api/response"
+	"github.com/grafana/grafana/pkg/api/routing"
 	"github.com/grafana/grafana/pkg/bus"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/annotations"
-
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestAnnotationsApiEndpoint(t *testing.T) {
-	Convey("Given an annotation without a dashboard id", t, func() {
+func TestAnnotationsAPIEndpoint(t *testing.T) {
+	t.Run("Given an annotation without a dashboard ID", func(t *testing.T) {
 		cmd := dtos.PostAnnotationsCmd{
-			Time:     1000,
-			Text:     "annotation text",
-			Tags:     []string{"tag1", "tag2"},
-			IsRegion: false,
+			Time: 1000,
+			Text: "annotation text",
+			Tags: []string{"tag1", "tag2"},
 		}
 
 		updateCmd := dtos.UpdateAnnotationsCmd{
-			Time:     1000,
-			Text:     "annotation text",
-			Tags:     []string{"tag1", "tag2"},
-			IsRegion: false,
+			Time: 1000,
+			Text: "annotation text",
+			Tags: []string{"tag1", "tag2"},
 		}
 
-		Convey("When user is an Org Viewer", func() {
-			role := m.ROLE_VIEWER
-			Convey("Should not be allowed to save an annotation", func() {
-				postAnnotationScenario("When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
-					sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
-				})
+		patchCmd := dtos.PatchAnnotationsCmd{
+			Time: 1000,
+			Text: "annotation text",
+			Tags: []string{"tag1", "tag2"},
+		}
 
-				putAnnotationScenario("When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
-					sc.fakeReqWithParams("PUT", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
-				})
+		t.Run("When user is an Org Viewer", func(t *testing.T) {
+			role := models.ROLE_VIEWER
+			t.Run("Should not be allowed to save an annotation", func(t *testing.T) {
+				postAnnotationScenario(t, "When calling POST on", "/api/annotations", "/api/annotations", role,
+					cmd, func(sc *scenarioContext) {
+						sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 403, sc.resp.Code)
+					})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/1", "/api/annotations/:annotationId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationById
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
-				})
+				putAnnotationScenario(t, "When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId",
+					role, updateCmd, func(sc *scenarioContext) {
+						sc.fakeReqWithParams("PUT", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 403, sc.resp.Code)
+					})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/region/1", "/api/annotations/region/:regionId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationRegion
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
-				})
+				patchAnnotationScenario(t, "When calling PATCH on", "/api/annotations/1",
+					"/api/annotations/:annotationId", role, patchCmd, func(sc *scenarioContext) {
+						sc.fakeReqWithParams("PATCH", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 403, sc.resp.Code)
+					})
+
+				loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/annotations/1",
+					"/api/annotations/:annotationId", role, func(sc *scenarioContext) {
+						fakeAnnoRepo = &fakeAnnotationsRepo{}
+						annotations.SetRepository(fakeAnnoRepo)
+						sc.handlerFunc = DeleteAnnotationByID
+						sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 403, sc.resp.Code)
+					})
 			})
 		})
 
-		Convey("When user is an Org Editor", func() {
-			role := m.ROLE_EDITOR
-			Convey("Should be able to save an annotation", func() {
-				postAnnotationScenario("When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
-					sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
-				})
+		t.Run("When user is an Org Editor", func(t *testing.T) {
+			role := models.ROLE_EDITOR
+			t.Run("Should be able to save an annotation", func(t *testing.T) {
+				postAnnotationScenario(t, "When calling POST on", "/api/annotations", "/api/annotations", role,
+					cmd, func(sc *scenarioContext) {
+						sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 200, sc.resp.Code)
+					})
 
-				putAnnotationScenario("When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
+				putAnnotationScenario(t, "When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
 					sc.fakeReqWithParams("PUT", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
+					assert.Equal(t, 200, sc.resp.Code)
 				})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/1", "/api/annotations/:annotationId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationById
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
+				patchAnnotationScenario(t, "When calling PATCH on", "/api/annotations/1", "/api/annotations/:annotationId", role, patchCmd, func(sc *scenarioContext) {
+					sc.fakeReqWithParams("PATCH", sc.url, map[string]string{}).exec()
+					assert.Equal(t, 200, sc.resp.Code)
 				})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/region/1", "/api/annotations/region/:regionId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationRegion
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
-				})
+				loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/annotations/1",
+					"/api/annotations/:annotationId", role, func(sc *scenarioContext) {
+						fakeAnnoRepo = &fakeAnnotationsRepo{}
+						annotations.SetRepository(fakeAnnoRepo)
+						sc.handlerFunc = DeleteAnnotationByID
+						sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 200, sc.resp.Code)
+					})
 			})
 		})
 	})
 
-	Convey("Given an annotation with a dashboard id and the dashboard does not have an acl", t, func() {
+	t.Run("Given an annotation with a dashboard ID and the dashboard does not have an ACL", func(t *testing.T) {
 		cmd := dtos.PostAnnotationsCmd{
 			Time:        1000,
 			Text:        "annotation text",
 			Tags:        []string{"tag1", "tag2"},
-			IsRegion:    false,
 			DashboardId: 1,
 			PanelId:     1,
 		}
 
 		updateCmd := dtos.UpdateAnnotationsCmd{
-			Time:     1000,
-			Text:     "annotation text",
-			Tags:     []string{"tag1", "tag2"},
-			IsRegion: false,
-			Id:       1,
+			Time: 1000,
+			Text: "annotation text",
+			Tags: []string{"tag1", "tag2"},
+			Id:   1,
 		}
 
-		viewerRole := m.ROLE_VIEWER
-		editorRole := m.ROLE_EDITOR
-
-		aclMockResp := []*m.DashboardAclInfoDTO{
-			{Role: &viewerRole, Permission: m.PERMISSION_VIEW},
-			{Role: &editorRole, Permission: m.PERMISSION_EDIT},
+		patchCmd := dtos.PatchAnnotationsCmd{
+			Time: 8000,
+			Text: "annotation text 50",
+			Tags: []string{"foo", "bar"},
+			Id:   1,
 		}
 
-		bus.AddHandler("test", func(query *m.GetDashboardAclInfoListQuery) error {
-			query.Result = aclMockResp
-			return nil
-		})
+		deleteCmd := dtos.DeleteAnnotationsCmd{
+			DashboardId: 1,
+			PanelId:     1,
+		}
 
-		bus.AddHandler("test", func(query *m.GetTeamsByUserQuery) error {
-			query.Result = []*m.Team{}
-			return nil
-		})
+		viewerRole := models.ROLE_VIEWER
+		editorRole := models.ROLE_EDITOR
 
-		Convey("When user is an Org Viewer", func() {
-			role := m.ROLE_VIEWER
-			Convey("Should not be allowed to save an annotation", func() {
-				postAnnotationScenario("When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
+		aclMockResp := []*models.DashboardAclInfoDTO{
+			{Role: &viewerRole, Permission: models.PERMISSION_VIEW},
+			{Role: &editorRole, Permission: models.PERMISSION_EDIT},
+		}
+
+		setUp := func() {
+			bus.AddHandler("test", func(query *models.GetDashboardAclInfoListQuery) error {
+				query.Result = aclMockResp
+				return nil
+			})
+
+			bus.AddHandler("test", func(query *models.GetTeamsByUserQuery) error {
+				query.Result = []*models.TeamDTO{}
+				return nil
+			})
+		}
+
+		t.Run("When user is an Org Viewer", func(t *testing.T) {
+			role := models.ROLE_VIEWER
+			t.Run("Should not be allowed to save an annotation", func(t *testing.T) {
+				postAnnotationScenario(t, "When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
+					setUp()
 					sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
+					assert.Equal(t, 403, sc.resp.Code)
 				})
 
-				putAnnotationScenario("When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
+				putAnnotationScenario(t, "When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
+					setUp()
 					sc.fakeReqWithParams("PUT", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
+					assert.Equal(t, 403, sc.resp.Code)
 				})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/1", "/api/annotations/:annotationId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationById
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
+				patchAnnotationScenario(t, "When calling PATCH on", "/api/annotations/1", "/api/annotations/:annotationId", role, patchCmd, func(sc *scenarioContext) {
+					setUp()
+					sc.fakeReqWithParams("PATCH", sc.url, map[string]string{}).exec()
+					assert.Equal(t, 403, sc.resp.Code)
 				})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/region/1", "/api/annotations/region/:regionId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationRegion
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 403)
-				})
+				loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/annotations/1",
+					"/api/annotations/:annotationId", role, func(sc *scenarioContext) {
+						setUp()
+						fakeAnnoRepo = &fakeAnnotationsRepo{}
+						annotations.SetRepository(fakeAnnoRepo)
+						sc.handlerFunc = DeleteAnnotationByID
+						sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 403, sc.resp.Code)
+					})
 			})
 		})
 
-		Convey("When user is an Org Editor", func() {
-			role := m.ROLE_EDITOR
-			Convey("Should be able to save an annotation", func() {
-				postAnnotationScenario("When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
+		t.Run("When user is an Org Editor", func(t *testing.T) {
+			role := models.ROLE_EDITOR
+			t.Run("Should be able to save an annotation", func(t *testing.T) {
+				postAnnotationScenario(t, "When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
+					setUp()
 					sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
+					assert.Equal(t, 200, sc.resp.Code)
 				})
 
-				putAnnotationScenario("When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
+				putAnnotationScenario(t, "When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
+					setUp()
 					sc.fakeReqWithParams("PUT", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
+					assert.Equal(t, 200, sc.resp.Code)
 				})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/1", "/api/annotations/:annotationId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationById
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
+				patchAnnotationScenario(t, "When calling PATCH on", "/api/annotations/1", "/api/annotations/:annotationId", role, patchCmd, func(sc *scenarioContext) {
+					setUp()
+					sc.fakeReqWithParams("PATCH", sc.url, map[string]string{}).exec()
+					assert.Equal(t, 200, sc.resp.Code)
 				})
 
-				loggedInUserScenarioWithRole("When calling DELETE on", "DELETE", "/api/annotations/region/1", "/api/annotations/region/:regionId", role, func(sc *scenarioContext) {
-					sc.handlerFunc = DeleteAnnotationRegion
-					sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
-					So(sc.resp.Code, ShouldEqual, 200)
+				loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/annotations/1",
+					"/api/annotations/:annotationId", role, func(sc *scenarioContext) {
+						setUp()
+						fakeAnnoRepo = &fakeAnnotationsRepo{}
+						annotations.SetRepository(fakeAnnoRepo)
+						sc.handlerFunc = DeleteAnnotationByID
+						sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 200, sc.resp.Code)
+					})
+			})
+		})
+
+		t.Run("When user is an Admin", func(t *testing.T) {
+			role := models.ROLE_ADMIN
+			t.Run("Should be able to do anything", func(t *testing.T) {
+				postAnnotationScenario(t, "When calling POST on", "/api/annotations", "/api/annotations", role, cmd, func(sc *scenarioContext) {
+					setUp()
+					sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
+					assert.Equal(t, 200, sc.resp.Code)
 				})
+
+				putAnnotationScenario(t, "When calling PUT on", "/api/annotations/1", "/api/annotations/:annotationId", role, updateCmd, func(sc *scenarioContext) {
+					setUp()
+					sc.fakeReqWithParams("PUT", sc.url, map[string]string{}).exec()
+					assert.Equal(t, 200, sc.resp.Code)
+				})
+
+				patchAnnotationScenario(t, "When calling PATCH on", "/api/annotations/1", "/api/annotations/:annotationId", role, patchCmd, func(sc *scenarioContext) {
+					setUp()
+					sc.fakeReqWithParams("PATCH", sc.url, map[string]string{}).exec()
+					assert.Equal(t, 200, sc.resp.Code)
+				})
+
+				deleteAnnotationsScenario(t, "When calling POST on", "/api/annotations/mass-delete",
+					"/api/annotations/mass-delete", role, deleteCmd, func(sc *scenarioContext) {
+						setUp()
+						sc.fakeReqWithParams("POST", sc.url, map[string]string{}).exec()
+						assert.Equal(t, 200, sc.resp.Code)
+					})
 			})
 		})
 	})
@@ -194,15 +262,16 @@ func (repo *fakeAnnotationsRepo) Find(query *annotations.ItemQuery) ([]*annotati
 
 var fakeAnnoRepo *fakeAnnotationsRepo
 
-func postAnnotationScenario(desc string, url string, routePattern string, role m.RoleType, cmd dtos.PostAnnotationsCmd, fn scenarioFunc) {
-	Convey(desc+" "+url, func() {
-		defer bus.ClearBusHandlers()
+func postAnnotationScenario(t *testing.T, desc string, url string, routePattern string, role models.RoleType,
+	cmd dtos.PostAnnotationsCmd, fn scenarioFunc) {
+	t.Run(fmt.Sprintf("%s %s", desc, url), func(t *testing.T) {
+		t.Cleanup(bus.ClearBusHandlers)
 
-		sc := setupScenarioContext(url)
-		sc.defaultHandler = wrap(func(c *m.ReqContext) Response {
+		sc := setupScenarioContext(t, url)
+		sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) response.Response {
 			sc.context = c
-			sc.context.UserId = TestUserID
-			sc.context.OrgId = TestOrgID
+			sc.context.UserId = testUserID
+			sc.context.OrgId = testOrgID
 			sc.context.OrgRole = role
 
 			return PostAnnotation(c, cmd)
@@ -217,15 +286,16 @@ func postAnnotationScenario(desc string, url string, routePattern string, role m
 	})
 }
 
-func putAnnotationScenario(desc string, url string, routePattern string, role m.RoleType, cmd dtos.UpdateAnnotationsCmd, fn scenarioFunc) {
-	Convey(desc+" "+url, func() {
-		defer bus.ClearBusHandlers()
+func putAnnotationScenario(t *testing.T, desc string, url string, routePattern string, role models.RoleType,
+	cmd dtos.UpdateAnnotationsCmd, fn scenarioFunc) {
+	t.Run(fmt.Sprintf("%s %s", desc, url), func(t *testing.T) {
+		t.Cleanup(bus.ClearBusHandlers)
 
-		sc := setupScenarioContext(url)
-		sc.defaultHandler = wrap(func(c *m.ReqContext) Response {
+		sc := setupScenarioContext(t, url)
+		sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) response.Response {
 			sc.context = c
-			sc.context.UserId = TestUserID
-			sc.context.OrgId = TestOrgID
+			sc.context.UserId = testUserID
+			sc.context.OrgId = testOrgID
 			sc.context.OrgRole = role
 
 			return UpdateAnnotation(c, cmd)
@@ -235,6 +305,53 @@ func putAnnotationScenario(desc string, url string, routePattern string, role m.
 		annotations.SetRepository(fakeAnnoRepo)
 
 		sc.m.Put(routePattern, sc.defaultHandler)
+
+		fn(sc)
+	})
+}
+
+func patchAnnotationScenario(t *testing.T, desc string, url string, routePattern string, role models.RoleType, cmd dtos.PatchAnnotationsCmd, fn scenarioFunc) {
+	t.Run(fmt.Sprintf("%s %s", desc, url), func(t *testing.T) {
+		defer bus.ClearBusHandlers()
+
+		sc := setupScenarioContext(t, url)
+		sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) response.Response {
+			sc.context = c
+			sc.context.UserId = testUserID
+			sc.context.OrgId = testOrgID
+			sc.context.OrgRole = role
+
+			return PatchAnnotation(c, cmd)
+		})
+
+		fakeAnnoRepo = &fakeAnnotationsRepo{}
+		annotations.SetRepository(fakeAnnoRepo)
+
+		sc.m.Patch(routePattern, sc.defaultHandler)
+
+		fn(sc)
+	})
+}
+
+func deleteAnnotationsScenario(t *testing.T, desc string, url string, routePattern string, role models.RoleType,
+	cmd dtos.DeleteAnnotationsCmd, fn scenarioFunc) {
+	t.Run(fmt.Sprintf("%s %s", desc, url), func(t *testing.T) {
+		defer bus.ClearBusHandlers()
+
+		sc := setupScenarioContext(t, url)
+		sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) response.Response {
+			sc.context = c
+			sc.context.UserId = testUserID
+			sc.context.OrgId = testOrgID
+			sc.context.OrgRole = role
+
+			return DeleteAnnotations(c, cmd)
+		})
+
+		fakeAnnoRepo = &fakeAnnotationsRepo{}
+		annotations.SetRepository(fakeAnnoRepo)
+
+		sc.m.Post(routePattern, sc.defaultHandler)
 
 		fn(sc)
 	})

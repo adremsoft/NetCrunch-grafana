@@ -5,9 +5,9 @@ import config from 'app/core/config';
 export class ImpressionSrv {
   constructor() {}
 
-  addDashboardImpression(dashboardId) {
-    var impressionsKey = this.impressionKey(config);
-    var impressions = [];
+  addDashboardImpression(dashboardId: number) {
+    const impressionsKey = this.impressionKey();
+    let impressions = [];
     if (store.exists(impressionsKey)) {
       impressions = JSON.parse(store.get(impressionsKey));
       if (!_.isArray(impressions)) {
@@ -15,7 +15,7 @@ export class ImpressionSrv {
       }
     }
 
-    impressions = impressions.filter(imp => {
+    impressions = impressions.filter((imp) => {
       return dashboardId !== imp;
     });
 
@@ -28,18 +28,18 @@ export class ImpressionSrv {
   }
 
   getDashboardOpened() {
-    var impressions = store.get(this.impressionKey(config)) || '[]';
+    let impressions = store.get(this.impressionKey()) || '[]';
 
     impressions = JSON.parse(impressions);
 
-    impressions = _.filter(impressions, el => {
+    impressions = _.filter(impressions, (el) => {
       return _.isNumber(el);
     });
 
     return impressions;
   }
 
-  impressionKey(config) {
+  impressionKey() {
     return 'dashboard_impressions-' + config.bootData.user.orgId;
   }
 }

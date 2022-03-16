@@ -1,72 +1,49 @@
-# Building The Docs
+# Building the docs locally
 
-To build the docs locally, you need to have docker installed.  The
-docs are built using [Hugo](http://gohugo.io/) - a static site generator.
+When you contribute to documentation, it is a good practice to build the docs on your local machine to make sure your changes appear as you expect. This README explains the process for doing that.
 
-**Prepare the Docker Image**:
+## Requirements
 
-Git clone `grafana/grafana.org` repo. Run these commands in the root of that repo. **Note** that you may require ``sudo``
-when running ``make docs-build`` depending on how your system's docker
-service is configured):
+Docker >= 2.1.0.3
+Yarn >= 1.22.4
 
+## Build the doc site
+
+1. On the command line, first change to the docs folder: `cd docs`.
+1. Run `make docs`. This launches a preview of the docs website at `http://localhost:3002/docs/grafana/latest/` which will refresh automatically when changes are made to content in the `sources` directory.
+
+If you have the grafana/website repo checked out in the same directory as the grafana repo, then you can run `make docs-local-static` to use local assets (such as images).
+
+---
+
+## Content guidelines
+
+Edit content in the `sources` directory.
+
+### Using `relref` for internal links
+
+Use the Hugo shortcode [relref](https://gohugo.io/content-management/cross-references/#use-ref-and-relref) any time you are linking to other internal docs pages.
+
+Syntax is:
 ```
-git clone https://github.com/grafana/grafana.org
-cd grafana.org
-make docs-build
-```
-
-**Build the Documentation**:
-
-Now that the docker image has been prepared we can build the
-grafana docs and start a docs server. 
-
-If you have not cloned the Grafana repository already then:
-
-```
-cd ..
-git clone https://github.com/grafana/grafana
-```
-
-Switch your working directory to the directory this file
-(README.md) is in.
-
-```
-cd grafana/docs
+{{< relref "example.md" >}}
 ```
 
-An AWS config file is required to build the docs Docker image and to publish the site to AWS. If you are building locally only and do not have any AWS credentials for docs.grafana.org then create an empty file named `awsconfig` in the current directory.
+You might need to add more context for the link (containing folders and so on, `folder/example.md`) if Hugo says the relref is ambiguous. 
 
-```
-touch awsconfig
-```
 
-Then run (possibly with ``sudo``):
+### Edit the side menu
 
-```
-make watch
-```
+The side menu is automatically build from the file structure. Use the [weight](https://gohugo.io/templates/lists/#by-weight) front matter parameter to order pages.
 
-This command will not return control of the shell to the user. Instead
-the command is now running a new docker container built from the image
-we created in the previous step.
+### Add images
 
-Open [localhost:3004](http://localhost:3004) to view the docs.
+Images are currently hosted in the grafana/website repo.
 
-### Images & Content
+---
 
-All markdown files are located in this repo (main grafana repo). But all images are added to the https://github.com/grafana/grafana.org repo. So the process of adding images is a bit complicated. 
+## Deploy changes to grafana.com
 
-First you need create a feature (PR) branch of https://github.com/grafana/grafana.org so you can make change. Then add the image to the `/static/img/docs` directory. Then make a commit that adds the image. 
+When a PR is merged to master with changes in the `docs/sources` directory, those changes are automatically synced to the grafana/website repo and published to the staging site.
 
-Then run:
-```
-make docs-build
-```
-
-This will rebuild the docs docker container. 
-
-To be able to use the image your have to quit  (CTRL-C) the `make watch` command (that you run in the same directory as this README). Then simply rerun `make watch`, it will restart the docs server but now with access to your image. 
-
-### Editing content
-
-Changes to the markdown files should automatically cause a docs rebuild and live reload should reload the page in your browser. 
+Generally, someone from marketing will publish to production each day: so as long as the sync is successful your docs edits will be published. Alternatively, you can refer to [publishing to production](https://github.com/grafana/website#publishing-to-production-grafanacom) if you'd like to do it yourself.

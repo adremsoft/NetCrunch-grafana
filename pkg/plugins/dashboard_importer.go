@@ -7,18 +7,21 @@ import (
 
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/dashboards"
 )
+
+var varRegex = regexp.MustCompile(`(\$\{.+?\})`)
 
 type ImportDashboardCommand struct {
 	Dashboard *simplejson.Json
 	Path      string
 	Inputs    []ImportDashboardInput
 	Overwrite bool
+	FolderId  int64
 
 	OrgId    int64
-	User     *m.SignedInUser
+	User     *models.SignedInUser
 	PluginId string
 	Result   *PluginDashboardInfoDTO
 }
@@ -43,7 +46,7 @@ func init() {
 }
 
 func ImportDashboard(cmd *ImportDashboardCommand) error {
-	var dashboard *m.Dashboard
+	var dashboard *models.Dashboard
 	var err error
 
 	if cmd.PluginId != "" {
@@ -51,7 +54,7 @@ func ImportDashboard(cmd *ImportDashboardCommand) error {
 			return err
 		}
 	} else {
-		dashboard = m.NewDashboardFromJson(cmd.Dashboard)
+		dashboard = models.NewDashboardFromJson(cmd.Dashboard)
 	}
 
 	evaluator := &DashTemplateEvaluator{
@@ -64,13 +67,13 @@ func ImportDashboard(cmd *ImportDashboardCommand) error {
 		return err
 	}
 
-	saveCmd := m.SaveDashboardCommand{
+	saveCmd := models.SaveDashboardCommand{
 		Dashboard: generatedDash,
 		OrgId:     cmd.OrgId,
 		UserId:    cmd.User.UserId,
 		Overwrite: cmd.Overwrite,
 		PluginId:  cmd.PluginId,
-		FolderId:  dashboard.FolderId,
+		FolderId:  cmd.FolderId,
 	}
 
 	dto := &dashboards.SaveDashboardDTO{
@@ -80,7 +83,7 @@ func ImportDashboard(cmd *ImportDashboardCommand) error {
 		User:      cmd.User,
 	}
 
-	savedDash, err := dashboards.NewService().SaveDashboard(dto)
+	savedDash, err := dashboards.NewService().ImportDashboard(dto)
 
 	if err != nil {
 		return err
@@ -91,10 +94,13 @@ func ImportDashboard(cmd *ImportDashboardCommand) error {
 		Title:            savedDash.Title,
 		Path:             cmd.Path,
 		Revision:         savedDash.Data.Get("revision").MustInt64(1),
+		FolderId:         savedDash.FolderId,
 		ImportedUri:      "db/" + savedDash.Slug,
 		ImportedUrl:      savedDash.GetUrl(),
 		ImportedRevision: dashboard.Data.Get("revision").MustInt64(1),
 		Imported:         true,
+		DashboardId:      savedDash.Id,
+		Slug:             savedDash.Slug,
 	}
 
 	return nil
@@ -105,12 +111,10 @@ type DashTemplateEvaluator struct {
 	inputs    []ImportDashboardInput
 	variables map[string]string
 	result    *simplejson.Json
-	varRegex  *regexp.Regexp
 }
 
-func (this *DashTemplateEvaluator) findInput(varName string, varType string) *ImportDashboardInput {
-
-	for _, input := range this.inputs {
+func (e *DashTemplateEvaluator) findInput(varName string, varType string) *ImportDashboardInput {
+	for _, input := range e.inputs {
 		if varType == input.Type && (input.Name == varName || input.Name == "*") {
 			return &input
 		}
@@ -119,40 +123,38 @@ func (this *DashTemplateEvaluator) findInput(varName string, varType string) *Im
 	return nil
 }
 
-func (this *DashTemplateEvaluator) Eval() (*simplejson.Json, error) {
-	this.result = simplejson.New()
-	this.variables = make(map[string]string)
-	this.varRegex, _ = regexp.Compile(`(\$\{.+\})`)
+func (e *DashTemplateEvaluator) Eval() (*simplejson.Json, error) {
+	e.result = simplejson.New()
+	e.variables = make(map[string]string)
 
 	// check that we have all inputs we need
-	for _, inputDef := range this.template.Get("__inputs").MustArray() {
+	for _, inputDef := range e.template.Get("__inputs").MustArray() {
 		inputDefJson := simplejson.NewFromAny(inputDef)
 		inputName := inputDefJson.Get("name").MustString()
 		inputType := inputDefJson.Get("type").MustString()
-		input := this.findInput(inputName, inputType)
+		input := e.findInput(inputName, inputType)
 
 		if input == nil {
 			return nil, &DashboardInputMissingError{VariableName: inputName}
 		}
 
-		this.variables["${"+inputName+"}"] = input.Value
+		e.variables["${"+inputName+"}"] = input.Value
 	}
 
-	return simplejson.NewFromAny(this.evalObject(this.template)), nil
+	return simplejson.NewFromAny(e.evalObject(e.template)), nil
 }
 
-func (this *DashTemplateEvaluator) evalValue(source *simplejson.Json) interface{} {
-
+func (e *DashTemplateEvaluator) evalValue(source *simplejson.Json) interface{} {
 	sourceValue := source.Interface()
 
 	switch v := sourceValue.(type) {
 	case string:
-		interpolated := this.varRegex.ReplaceAllStringFunc(v, func(match string) string {
-			if replacement, exists := this.variables[match]; exists {
+		interpolated := varRegex.ReplaceAllStringFunc(v, func(match string) string {
+			replacement, exists := e.variables[match]
+			if exists {
 				return replacement
-			} else {
-				return match
 			}
+			return match
 		})
 		return interpolated
 	case bool:
@@ -160,11 +162,11 @@ func (this *DashTemplateEvaluator) evalValue(source *simplejson.Json) interface{
 	case json.Number:
 		return v
 	case map[string]interface{}:
-		return this.evalObject(source)
+		return e.evalObject(source)
 	case []interface{}:
 		array := make([]interface{}, 0)
 		for _, item := range v {
-			array = append(array, this.evalValue(simplejson.NewFromAny(item)))
+			array = append(array, e.evalValue(simplejson.NewFromAny(item)))
 		}
 		return array
 	}
@@ -172,14 +174,14 @@ func (this *DashTemplateEvaluator) evalValue(source *simplejson.Json) interface{
 	return nil
 }
 
-func (this *DashTemplateEvaluator) evalObject(source *simplejson.Json) interface{} {
+func (e *DashTemplateEvaluator) evalObject(source *simplejson.Json) interface{} {
 	result := make(map[string]interface{})
 
 	for key, value := range source.MustMap() {
 		if key == "__inputs" {
 			continue
 		}
-		result[key] = this.evalValue(simplejson.NewFromAny(value))
+		result[key] = e.evalValue(simplejson.NewFromAny(value))
 	}
 
 	return result

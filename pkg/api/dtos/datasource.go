@@ -4,16 +4,17 @@ import (
 	"strings"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
-	m "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/models"
 )
 
 type DataSource struct {
 	Id                int64            `json:"id"`
+	UID               string           `json:"uid"`
 	OrgId             int64            `json:"orgId"`
 	Name              string           `json:"name"`
 	Type              string           `json:"type"`
 	TypeLogoUrl       string           `json:"typeLogoUrl"`
-	Access            m.DsAccess       `json:"access"`
+	Access            models.DsAccess  `json:"access"`
 	Url               string           `json:"url"`
 	Password          string           `json:"password"`
 	User              string           `json:"user"`
@@ -31,11 +32,13 @@ type DataSource struct {
 
 type DataSourceListItemDTO struct {
 	Id          int64            `json:"id"`
+	UID         string           `json:"uid"`
 	OrgId       int64            `json:"orgId"`
 	Name        string           `json:"name"`
 	Type        string           `json:"type"`
+	TypeName    string           `json:"typeName"`
 	TypeLogoUrl string           `json:"typeLogoUrl"`
-	Access      m.DsAccess       `json:"access"`
+	Access      models.DsAccess  `json:"access"`
 	Url         string           `json:"url"`
 	Password    string           `json:"password"`
 	User        string           `json:"user"`

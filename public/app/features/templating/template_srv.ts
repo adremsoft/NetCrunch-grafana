@@ -1,66 +1,103 @@
-import kbn from 'app/core/utils/kbn';
 import _ from 'lodash';
+import { deprecationWarning, ScopedVars, TimeRange } from '@grafana/data';
+import { getFilteredVariables, getVariables, getVariableWithName } from '../variables/state/selectors';
+import { variableRegex } from '../variables/utils';
+import { isAdHoc } from '../variables/guard';
+import { VariableModel } from '../variables/types';
+import { setTemplateSrv, TemplateSrv as BaseTemplateSrv } from '@grafana/runtime';
+import { FormatOptions, formatRegistry } from './formatRegistry';
+import { ALL_VARIABLE_TEXT, ALL_VARIABLE_VALUE } from '../variables/state/types';
 
-function luceneEscape(value) {
-  return value.replace(/([\!\*\+\-\=<>\s\&\|\(\)\[\]\{\}\^\~\?\:\\/"])/g, '\\$1');
+interface FieldAccessorCache {
+  [key: string]: (obj: any) => any;
 }
 
-export class TemplateSrv {
-  variables: any[];
+export interface TemplateSrvDependencies {
+  getFilteredVariables: typeof getFilteredVariables;
+  getVariables: typeof getVariables;
+  getVariableWithName: typeof getVariableWithName;
+}
 
-  /*
-   * This regex matches 3 types of variable reference with an optional format specifier
-   * \$(\w+)                          $var1
-   * \[\[([\s\S]+?)(?::(\w+))?\]\]    [[var2]] or [[var2:fmt2]]
-   * \${(\w+)(?::(\w+))?}             ${var3} or ${var3:fmt3}
+const runtimeDependencies: TemplateSrvDependencies = {
+  getFilteredVariables,
+  getVariables,
+  getVariableWithName,
+};
+
+export class TemplateSrv implements BaseTemplateSrv {
+  private _variables: any[];
+  private regex = variableRegex;
+  private index: any = {};
+  private grafanaVariables: any = {};
+  private timeRange?: TimeRange | null = null;
+  private fieldAccessorCache: FieldAccessorCache = {};
+
+  constructor(private dependencies: TemplateSrvDependencies = runtimeDependencies) {
+    this._variables = [];
+  }
+
+  init(variables: any, timeRange?: TimeRange) {
+    this._variables = variables;
+    this.timeRange = timeRange;
+    this.updateIndex();
+  }
+
+  /**
+   * @deprecated: this instance variable should not be used and will be removed in future releases
+   *
+   * Use getVariables function instead
    */
-  private regex = /\$(\w+)|\[\[([\s\S]+?)(?::(\w+))?\]\]|\${(\w+)(?::(\w+))?}/g;
-  private index = {};
-  private grafanaVariables = {};
-  private builtIns = {};
-
-  constructor() {
-    this.builtIns['__interval'] = { text: '1s', value: '1s' };
-    this.builtIns['__interval_ms'] = { text: '100', value: '100' };
+  get variables(): any[] {
+    deprecationWarning('template_srv.ts', 'variables', 'getVariables');
+    return this.getVariables();
   }
 
-  init(variables) {
-    this.variables = variables;
-    this.updateTemplateData();
+  getVariables(): VariableModel[] {
+    return this.dependencies.getVariables();
   }
 
-  updateTemplateData() {
-    this.index = {};
+  updateIndex() {
+    const existsOrEmpty = (value: any) => value || value === '';
 
-    for (var i = 0; i < this.variables.length; i++) {
-      var variable = this.variables[i];
-
-      if (!variable.current || (!variable.current.isNone && !variable.current.value)) {
-        continue;
+    this.index = this._variables.reduce((acc, currentValue) => {
+      if (currentValue.current && (currentValue.current.isNone || existsOrEmpty(currentValue.current.value))) {
+        acc[currentValue.name] = currentValue;
       }
+      return acc;
+    }, {});
 
-      this.index[variable.name] = variable;
+    if (this.timeRange) {
+      const from = this.timeRange.from.valueOf().toString();
+      const to = this.timeRange.to.valueOf().toString();
+
+      this.index = {
+        ...this.index,
+        ['__from']: {
+          current: { value: from, text: from },
+        },
+        ['__to']: {
+          current: { value: to, text: to },
+        },
+      };
     }
   }
 
-  variableInitialized(variable) {
+  updateTimeRange(timeRange: TimeRange) {
+    this.timeRange = timeRange;
+    this.updateIndex();
+  }
+
+  variableInitialized(variable: any) {
     this.index[variable.name] = variable;
   }
 
-  getAdhocFilters(datasourceName) {
-    var filters = [];
+  getAdhocFilters(datasourceName: string) {
+    let filters: any = [];
 
-    for (var i = 0; i < this.variables.length; i++) {
-      var variable = this.variables[i];
-      if (variable.type !== 'adhoc') {
-        continue;
-      }
-
-      if (variable.datasource === datasourceName) {
+    for (const variable of this.getAdHocVariables()) {
+      if (variable.datasource === null || variable.datasource === datasourceName) {
         filters = filters.concat(variable.filters);
-      }
-
-      if (variable.datasource.indexOf('$') === 0) {
+      } else if (variable.datasource.indexOf('$') === 0) {
         if (this.replace(variable.datasource) === datasourceName) {
           filters = filters.concat(variable.filters);
         }
@@ -70,85 +107,83 @@ export class TemplateSrv {
     return filters;
   }
 
-  luceneFormat(value) {
-    if (typeof value === 'string') {
-      return luceneEscape(value);
-    }
-    var quotedValues = _.map(value, function(val) {
-      return '"' + luceneEscape(val) + '"';
-    });
-    return '(' + quotedValues.join(' OR ') + ')';
-  }
-
-  formatValue(value, format, variable) {
+  formatValue(value: any, format: any, variable: any, text?: string) {
     // for some scopedVars there is no variable
     variable = variable || {};
+
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    // if it's an object transform value to string
+    if (!Array.isArray(value) && typeof value === 'object') {
+      value = `${value}`;
+    }
 
     if (typeof format === 'function') {
       return format(value, variable, this.formatValue);
     }
 
-    switch (format) {
-      case 'regex': {
-        if (typeof value === 'string') {
-          return kbn.regexEscape(value);
-        }
-
-        var escapedValues = _.map(value, kbn.regexEscape);
-        if (escapedValues.length === 1) {
-          return escapedValues[0];
-        }
-        return '(' + escapedValues.join('|') + ')';
-      }
-      case 'lucene': {
-        return this.luceneFormat(value);
-      }
-      case 'pipe': {
-        if (typeof value === 'string') {
-          return value;
-        }
-        return value.join('|');
-      }
-      case 'distributed': {
-        if (typeof value === 'string') {
-          return value;
-        }
-        return this.distributeVariable(value, variable.name);
-      }
-      case 'csv': {
-        if (_.isArray(value)) {
-          return value.join(',');
-        }
-        return value;
-      }
-      default: {
-        if (_.isArray(value)) {
-          return '{' + value.join(',') + '}';
-        }
-        return value;
-      }
+    if (!format) {
+      format = 'glob';
     }
+
+    // some formats have arguments that come after ':' character
+    let args = format.split(':');
+    if (args.length > 1) {
+      format = args[0];
+      args = args.slice(1);
+    } else {
+      args = [];
+    }
+
+    let formatItem = formatRegistry.getIfExists(format);
+
+    if (!formatItem) {
+      console.error(`Variable format ${format} not found. Using glob format as fallback.`);
+      formatItem = formatRegistry.get('glob');
+    }
+
+    const options: FormatOptions = { value, args, text: text ?? value };
+    return formatItem.formatter(options, variable);
   }
 
-  setGrafanaVariable(name, value) {
+  setGrafanaVariable(name: string, value: any) {
     this.grafanaVariables[name] = value;
   }
 
-  getVariableName(expression) {
+  /**
+   * @deprecated: setGlobalVariable function should not be used and will be removed in future releases
+   *
+   * Use addVariable action to add variables to Redux instead
+   */
+  setGlobalVariable(name: string, variable: any) {
+    deprecationWarning('template_srv.ts', 'setGlobalVariable', '');
+    this.index = {
+      ...this.index,
+      [name]: {
+        current: variable,
+      },
+    };
+  }
+
+  getVariableName(expression: string) {
     this.regex.lastIndex = 0;
-    var match = this.regex.exec(expression);
+    const match = this.regex.exec(expression);
     if (!match) {
       return null;
     }
-    return match[1] || match[2];
+    const variableName = match.slice(1).find((match) => match !== undefined);
+    return variableName;
   }
 
-  variableExists(expression) {
-    var name = this.getVariableName(expression);
-    return name && this.index[name] !== void 0;
+  variableExists(expression: string): boolean {
+    const name = this.getVariableName(expression);
+    const variable = name && this.getVariableAtIndex(name);
+    return variable !== null && variable !== undefined;
   }
 
-  highlightVariablesAsHtml(str) {
+  highlightVariablesAsHtml(str: string) {
     if (!str || !_.isString(str)) {
       return str;
     }
@@ -156,39 +191,78 @@ export class TemplateSrv {
     str = _.escape(str);
     this.regex.lastIndex = 0;
     return str.replace(this.regex, (match, var1, var2, fmt2, var3) => {
-      if (this.index[var1 || var2 || var3] || this.builtIns[var1 || var2 || var3]) {
+      if (this.getVariableAtIndex(var1 || var2 || var3)) {
         return '<span class="template-variable">' + match + '</span>';
       }
       return match;
     });
   }
 
-  getAllValue(variable) {
+  getAllValue(variable: any) {
     if (variable.allValue) {
       return variable.allValue;
     }
-    var values = [];
-    for (var i = 1; i < variable.options.length; i++) {
+    const values = [];
+    for (let i = 1; i < variable.options.length; i++) {
       values.push(variable.options[i].value);
     }
     return values;
   }
 
-  replace(target, scopedVars?, format?) {
-    if (!target) {
-      return target;
+  private getFieldAccessor(fieldPath: string) {
+    const accessor = this.fieldAccessorCache[fieldPath];
+    if (accessor) {
+      return accessor;
     }
 
-    var variable, systemValue, value;
+    return (this.fieldAccessorCache[fieldPath] = _.property(fieldPath));
+  }
+
+  private getVariableValue(variableName: string, fieldPath: string | undefined, scopedVars: ScopedVars) {
+    const scopedVar = scopedVars[variableName];
+    if (!scopedVar) {
+      return null;
+    }
+
+    if (fieldPath) {
+      return this.getFieldAccessor(fieldPath)(scopedVar.value);
+    }
+
+    return scopedVar.value;
+  }
+
+  private getVariableText(variableName: string, value: any, scopedVars: ScopedVars) {
+    const scopedVar = scopedVars[variableName];
+
+    if (!scopedVar) {
+      return null;
+    }
+
+    if (scopedVar.value === value || typeof value !== 'string') {
+      return scopedVar.text;
+    }
+
+    return value;
+  }
+
+  replace(target?: string, scopedVars?: ScopedVars, format?: string | Function): string {
+    if (!target) {
+      return target ?? '';
+    }
+
     this.regex.lastIndex = 0;
 
-    return target.replace(this.regex, (match, var1, var2, fmt2, var3, fmt3) => {
-      variable = this.index[var1 || var2 || var3];
-      format = fmt2 || fmt3 || format;
+    return target.replace(this.regex, (match, var1, var2, fmt2, var3, fieldPath, fmt3) => {
+      const variableName = var1 || var2 || var3;
+      const variable = this.getVariableAtIndex(variableName);
+      const fmt = fmt2 || fmt3 || format;
+
       if (scopedVars) {
-        value = scopedVars[var1 || var2 || var3];
-        if (value) {
-          return this.formatValue(value.value, format, variable);
+        const value = this.getVariableValue(variableName, fieldPath, scopedVars);
+        const text = this.getVariableText(variableName, value, scopedVars);
+
+        if (value !== null && value !== undefined) {
+          return this.formatValue(value, fmt, variable, text);
         }
       }
 
@@ -196,74 +270,64 @@ export class TemplateSrv {
         return match;
       }
 
-      systemValue = this.grafanaVariables[variable.current.value];
+      const systemValue = this.grafanaVariables[variable.current.value];
       if (systemValue) {
-        return this.formatValue(systemValue, format, variable);
+        return this.formatValue(systemValue, fmt, variable);
       }
 
-      value = variable.current.value;
+      let value = variable.current.value;
+      let text = variable.current.text;
+
       if (this.isAllValue(value)) {
         value = this.getAllValue(variable);
-        // skip formating of custom all values
-        if (variable.allValue) {
-          return value;
+        text = ALL_VARIABLE_TEXT;
+        // skip formatting of custom all values
+        if (variable.allValue && fmt !== 'text' && fmt !== 'queryparam') {
+          return this.replace(value);
         }
       }
 
-      var res = this.formatValue(value, format, variable);
+      if (fieldPath) {
+        const fieldValue = this.getVariableValue(variableName, fieldPath, {
+          [variableName]: { value, text },
+        });
+        if (fieldValue !== null && fieldValue !== undefined) {
+          return this.formatValue(fieldValue, fmt, variable, text);
+        }
+      }
+
+      const res = this.formatValue(value, fmt, variable, text);
       return res;
     });
   }
 
-  isAllValue(value) {
-    return value === '$__all' || (Array.isArray(value) && value[0] === '$__all');
+  isAllValue(value: any) {
+    return value === ALL_VARIABLE_VALUE || (Array.isArray(value) && value[0] === ALL_VARIABLE_VALUE);
   }
 
-  replaceWithText(target, scopedVars) {
-    if (!target) {
-      return target;
+  replaceWithText(target: string, scopedVars?: ScopedVars) {
+    deprecationWarning('template_srv.ts', 'replaceWithText()', 'replace(), and specify the :text format');
+    return this.replace(target, scopedVars, 'text');
+  }
+
+  private getVariableAtIndex(name: string) {
+    if (!name) {
+      return;
     }
 
-    var variable;
-    this.regex.lastIndex = 0;
+    if (!this.index[name]) {
+      return this.dependencies.getVariableWithName(name);
+    }
 
-    return target.replace(this.regex, (match, var1, var2, fmt2, var3) => {
-      if (scopedVars) {
-        var option = scopedVars[var1 || var2 || var3];
-        if (option) {
-          return option.text;
-        }
-      }
-
-      variable = this.index[var1 || var2 || var3];
-      if (!variable) {
-        return match;
-      }
-
-      return this.grafanaVariables[variable.current.value] || variable.current.text;
-    });
+    return this.index[name];
   }
 
-  fillVariableValuesForUrl(params, scopedVars) {
-    _.each(this.variables, function(variable) {
-      if (scopedVars && scopedVars[variable.name] !== void 0) {
-        params['var-' + variable.name] = scopedVars[variable.name].value;
-      } else {
-        params['var-' + variable.name] = variable.getValueForUrl();
-      }
-    });
-  }
-
-  distributeVariable(value, variable) {
-    value = _.map(value, function(val, index) {
-      if (index !== 0) {
-        return variable + '=' + val;
-      } else {
-        return val;
-      }
-    });
-    return value.join(',');
+  private getAdHocVariables(): any[] {
+    return this.dependencies.getFilteredVariables(isAdHoc);
   }
 }
 
-export default new TemplateSrv();
+// Expose the template srv
+const srv = new TemplateSrv();
+setTemplateSrv(srv);
+export const getTemplateSrv = () => srv;

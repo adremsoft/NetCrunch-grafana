@@ -2,20 +2,22 @@
 title = "Team HTTP API "
 description = "Grafana Team HTTP API"
 keywords = ["grafana", "http", "documentation", "api", "team", "teams", "group"]
-aliases = ["/http_api/team/"]
-type = "docs"
-[menu.docs]
-name = "Teams"
-parent = "http_api"
+aliases = ["/docs/grafana/latest/http_api/team/"]
 +++
 
 # Team API
 
-This API can be used to create/update/delete Teams and to add/remove users to Teams. All actions require that the user has the Admin role for the organization.
+This API can be used to manage Teams and Team Memberships.
+
+Access to these API endpoints is restricted as follows:
+
+- All authenticated users are able to view details of teams they are a member of.
+- Organization Admins are able to manage all teams and team members.
+- If the `editors_can_admin` configuration flag is enabled, Organization Editors are able to view details of all teams and to manage teams that they are Admin members of.
 
 ## Team Search With Paging
 
-`GET /api/teams/search?perpage=50&page=1&query=mytea`
+`GET /api/teams/search?perpage=50&page=1&query=myteam`
 
 or
 
@@ -30,11 +32,11 @@ Authorization: Basic YWRtaW46YWRtaW4=
 
 ### Using the query parameter
 
-Default value for the `perpage` parameter is `1000` and for the `page` parameter is `1`. 
+Default value for the `perpage` parameter is `1000` and for the `page` parameter is `1`.
 
 The `totalCount` field in the response can be used for pagination of the teams list E.g. if `totalCount` is equal to 100 teams and the `perpage` parameter is set to 10 then there are 10 pages of teams.
 
-The `query` parameter is optional and it will return results where the query value is contained in the `name` field. Query values with spaces need to be url encoded e.g. `query=my%20team`.
+The `query` parameter is optional and it will return results where the query value is contained in the `name` field. Query values with spaces need to be URL encoded e.g. `query=my%20team`.
 
 ### Using the name parameter
 
@@ -46,6 +48,7 @@ The `name` parameter returns a single team if the parameter matches the `name` f
 HTTP/1.1 200
 Content-Type: application/json
 
+{
   "totalCount": 1,
   "teams": [
     {
@@ -107,7 +110,7 @@ Status Codes:
 
 ## Add Team
 
-The Team `name` needs to be unique. `name` is required and `email` is optional.
+The Team `name` needs to be unique. `name` is required and `email`,`orgId` is optional.
 
 `POST /api/teams`
 
@@ -121,7 +124,8 @@ Authorization: Basic YWRtaW46YWRtaW4=
 
 {
   "name": "MyTestTeam",
-  "email": "email@test.com"
+  "email": "email@test.com",
+  "orgId": 2
 }
 ```
 
@@ -314,3 +318,67 @@ Status Codes:
 - **401** - Unauthorized
 - **403** - Permission denied
 - **404** - Team not found/Team member not found
+
+## Get Team Preferences
+
+`GET /api/teams/:teamId/preferences`
+
+**Example Request**:
+
+```http
+GET /api/teams/2/preferences HTTP/1.1
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
+```
+
+**Example Response**:
+
+```http
+HTTP/1.1 200
+Content-Type: application/json
+
+{
+  "theme": "",
+  "homeDashboardId": 0,
+  "timezone": ""
+}
+```
+
+## Update Team Preferences
+
+`PUT /api/teams/:teamId/preferences`
+
+**Example Request**:
+
+```http
+PUT /api/teams/2/preferences HTTP/1.1
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
+
+{
+  "theme": "dark",
+  "homeDashboardId": 39,
+  "timezone": "utc"
+}
+```
+
+JSON Body Schema:
+
+- **theme** - One of: ``light``, ``dark``, or an empty string for the default theme
+- **homeDashboardId** - The numerical ``:id`` of a dashboard, default: ``0``
+- **timezone** - One of: ``utc``, ``browser``, or an empty string for the default
+
+Omitting a key will cause the current value to be replaced with the system default value.
+
+**Example Response**:
+
+```http
+HTTP/1.1 200
+Content-Type: text/plain; charset=utf-8
+
+{
+  "message":"Preferences updated"
+}
+```

@@ -3,69 +3,150 @@ package api
 import (
 	"testing"
 
+	"github.com/grafana/grafana/pkg/setting"
+	macaron "gopkg.in/macaron.v1"
+
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/models"
 
-	. "github.com/smartystreets/goconvey/convey"
+	"net/http"
+
+	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestTeamApiEndpoint(t *testing.T) {
-	Convey("Given two teams", t, func() {
+type testLogger struct {
+	log.Logger
+	warnCalled  bool
+	warnMessage string
+}
+
+func (stub *testLogger) Warn(testMessage string, ctx ...interface{}) {
+	stub.warnCalled = true
+	stub.warnMessage = testMessage
+}
+
+func TestTeamAPIEndpoint(t *testing.T) {
+	t.Run("Given two teams", func(t *testing.T) {
 		mockResult := models.SearchTeamQueryResult{
-			Teams: []*models.SearchTeamDto{
+			Teams: []*models.TeamDTO{
 				{Name: "team1"},
 				{Name: "team2"},
 			},
 			TotalCount: 2,
 		}
 
-		Convey("When searching with no parameters", func() {
-			loggedInUserScenario("When calling GET on", "/api/teams/search", func(sc *scenarioContext) {
-				var sentLimit int
-				var sendPage int
-				bus.AddHandler("test", func(query *models.SearchTeamsQuery) error {
-					query.Result = mockResult
+		hs := &HTTPServer{
+			Cfg: setting.NewCfg(),
+		}
 
-					sentLimit = query.Limit
-					sendPage = query.Page
+		loggedInUserScenario(t, "When calling GET on", "/api/teams/search", func(sc *scenarioContext) {
+			var sentLimit int
+			var sendPage int
+			bus.AddHandler("test", func(query *models.SearchTeamsQuery) error {
+				query.Result = mockResult
 
-					return nil
-				})
+				sentLimit = query.Limit
+				sendPage = query.Page
 
-				sc.handlerFunc = SearchTeams
-				sc.fakeReqWithParams("GET", sc.url, map[string]string{}).exec()
-
-				So(sentLimit, ShouldEqual, 1000)
-				So(sendPage, ShouldEqual, 1)
-
-				respJSON, err := simplejson.NewJson(sc.resp.Body.Bytes())
-				So(err, ShouldBeNil)
-
-				So(respJSON.Get("totalCount").MustInt(), ShouldEqual, 2)
-				So(len(respJSON.Get("teams").MustArray()), ShouldEqual, 2)
+				return nil
 			})
+
+			sc.handlerFunc = hs.SearchTeams
+			sc.fakeReqWithParams("GET", sc.url, map[string]string{}).exec()
+
+			assert.Equal(t, 1000, sentLimit)
+			assert.Equal(t, 1, sendPage)
+
+			respJSON, err := simplejson.NewJson(sc.resp.Body.Bytes())
+			require.NoError(t, err)
+
+			assert.Equal(t, 2, respJSON.Get("totalCount").MustInt())
+			assert.Equal(t, 2, len(respJSON.Get("teams").MustArray()))
 		})
 
-		Convey("When searching with page and perpage parameters", func() {
-			loggedInUserScenario("When calling GET on", "/api/teams/search", func(sc *scenarioContext) {
-				var sentLimit int
-				var sendPage int
-				bus.AddHandler("test", func(query *models.SearchTeamsQuery) error {
-					query.Result = mockResult
+		loggedInUserScenario(t, "When calling GET on", "/api/teams/search", func(sc *scenarioContext) {
+			var sentLimit int
+			var sendPage int
+			bus.AddHandler("test", func(query *models.SearchTeamsQuery) error {
+				query.Result = mockResult
 
-					sentLimit = query.Limit
-					sendPage = query.Page
+				sentLimit = query.Limit
+				sendPage = query.Page
 
-					return nil
-				})
-
-				sc.handlerFunc = SearchTeams
-				sc.fakeReqWithParams("GET", sc.url, map[string]string{"perpage": "10", "page": "2"}).exec()
-
-				So(sentLimit, ShouldEqual, 10)
-				So(sendPage, ShouldEqual, 2)
+				return nil
 			})
+
+			sc.handlerFunc = hs.SearchTeams
+			sc.fakeReqWithParams("GET", sc.url, map[string]string{"perpage": "10", "page": "2"}).exec()
+
+			assert.Equal(t, 10, sentLimit)
+			assert.Equal(t, 2, sendPage)
+		})
+	})
+
+	t.Run("When creating team with API key", func(t *testing.T) {
+		defer bus.ClearBusHandlers()
+
+		hs := &HTTPServer{
+			Cfg: setting.NewCfg(),
+			Bus: bus.GetBus(),
+		}
+		hs.Cfg.EditorsCanAdmin = true
+
+		teamName := "team foo"
+
+		createTeamCalled := 0
+		bus.AddHandler("test", func(cmd *models.CreateTeamCommand) error {
+			createTeamCalled += 1
+			cmd.Result = models.Team{Name: teamName, Id: 42}
+			return nil
+		})
+
+		addTeamMemberCalled := 0
+		bus.AddHandler("test", func(cmd *models.AddTeamMemberCommand) error {
+			addTeamMemberCalled += 1
+			return nil
+		})
+
+		req, _ := http.NewRequest("POST", "/api/teams", nil)
+
+		t.Run("with no real signed in user", func(t *testing.T) {
+			stub := &testLogger{}
+			c := &models.ReqContext{
+				Context: &macaron.Context{
+					Req: macaron.Request{Request: req},
+				},
+				SignedInUser: &models.SignedInUser{},
+				Logger:       stub,
+			}
+			c.OrgRole = models.ROLE_EDITOR
+			cmd := models.CreateTeamCommand{Name: teamName}
+			hs.CreateTeam(c, cmd)
+			assert.Equal(t, createTeamCalled, 1)
+			assert.Equal(t, addTeamMemberCalled, 0)
+			assert.True(t, stub.warnCalled)
+			assert.Equal(t, stub.warnMessage, "Could not add creator to team because is not a real user.")
+		})
+
+		t.Run("with real signed in user", func(t *testing.T) {
+			stub := &testLogger{}
+			c := &models.ReqContext{
+				Context: &macaron.Context{
+					Req: macaron.Request{Request: req},
+				},
+				SignedInUser: &models.SignedInUser{UserId: 42},
+				Logger:       stub,
+			}
+			c.OrgRole = models.ROLE_EDITOR
+			cmd := models.CreateTeamCommand{Name: teamName}
+			createTeamCalled, addTeamMemberCalled = 0, 0
+			hs.CreateTeam(c, cmd)
+			assert.Equal(t, createTeamCalled, 1)
+			assert.Equal(t, addTeamMemberCalled, 1)
+			assert.False(t, stub.warnCalled)
 		})
 	})
 }

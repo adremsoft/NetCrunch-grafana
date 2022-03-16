@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -11,111 +14,186 @@ import (
 	"syscall"
 	"time"
 
-	"net/http"
-	_ "net/http/pprof"
-
-	"github.com/grafana/grafana/pkg/log"
-	"github.com/grafana/grafana/pkg/metrics"
-	"github.com/grafana/grafana/pkg/setting"
-
+	"github.com/grafana/grafana/pkg/extensions"
+	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/infra/metrics"
+	"github.com/grafana/grafana/pkg/server"
 	_ "github.com/grafana/grafana/pkg/services/alerting/conditions"
 	_ "github.com/grafana/grafana/pkg/services/alerting/notifiers"
+	"github.com/grafana/grafana/pkg/setting"
+	_ "github.com/grafana/grafana/pkg/tsdb/azuremonitor"
+	_ "github.com/grafana/grafana/pkg/tsdb/cloudmonitoring"
 	_ "github.com/grafana/grafana/pkg/tsdb/cloudwatch"
+	_ "github.com/grafana/grafana/pkg/tsdb/elasticsearch"
 	_ "github.com/grafana/grafana/pkg/tsdb/graphite"
 	_ "github.com/grafana/grafana/pkg/tsdb/influxdb"
+	_ "github.com/grafana/grafana/pkg/tsdb/loki"
 	_ "github.com/grafana/grafana/pkg/tsdb/mysql"
 	_ "github.com/grafana/grafana/pkg/tsdb/opentsdb"
 	_ "github.com/grafana/grafana/pkg/tsdb/postgres"
 	_ "github.com/grafana/grafana/pkg/tsdb/prometheus"
-	_ "github.com/grafana/grafana/pkg/tsdb/testdata"
+	_ "github.com/grafana/grafana/pkg/tsdb/tempo"
+	_ "github.com/grafana/grafana/pkg/tsdb/testdatasource"
 )
 
+// The following variables cannot be constants, since they can be overridden through the -X link flag
 var version = "5.0.0"
 var commit = "NA"
+var buildBranch = "master"
 var buildstamp string
-var build_date string
 
-var configFile = flag.String("config", "", "path to config file")
-var homePath = flag.String("homepath", "", "path to grafana install/home path, defaults to working directory")
-var pidFile = flag.String("pidfile", "", "path to pid file")
-var exitChan = make(chan int)
+type exitWithCode struct {
+	reason string
+	code   int
+}
+
+func (e exitWithCode) Error() string {
+	return e.reason
+}
 
 func main() {
-	v := flag.Bool("v", false, "prints current version and exits")
-	profile := flag.Bool("profile", false, "Turn on pprof profiling")
-	profilePort := flag.Int("profile-port", 6060, "Define custom port for profiling")
+	var (
+		configFile = flag.String("config", "", "path to config file")
+		homePath   = flag.String("homepath", "", "path to grafana install/home path, defaults to working directory")
+		pidFile    = flag.String("pidfile", "", "path to pid file")
+		packaging  = flag.String("packaging", "unknown", "describes the way Grafana was installed")
+
+		v           = flag.Bool("v", false, "prints current version and exits")
+		profile     = flag.Bool("profile", false, "Turn on pprof profiling")
+		profilePort = flag.Uint64("profile-port", 6060, "Define custom port for profiling")
+		tracing     = flag.Bool("tracing", false, "Turn on tracing")
+		tracingFile = flag.String("tracing-file", "trace.out", "Define tracing output file")
+	)
+
 	flag.Parse()
+
 	if *v {
-		fmt.Printf("Version %s (commit: %s)\n", version, commit)
+		fmt.Printf("Version %s (commit: %s, branch: %s)\n", version, commit, buildBranch)
 		os.Exit(0)
 	}
 
-	if *profile {
+	profileDiagnostics := newProfilingDiagnostics(*profile, *profilePort)
+	if err := profileDiagnostics.overrideWithEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	traceDiagnostics := newTracingDiagnostics(*tracing, *tracingFile)
+	if err := traceDiagnostics.overrideWithEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	if profileDiagnostics.enabled {
+		fmt.Println("diagnostics: pprof profiling enabled", "port", profileDiagnostics.port)
 		runtime.SetBlockProfileRate(1)
 		go func() {
-			http.ListenAndServe(fmt.Sprintf("localhost:%d", *profilePort), nil)
+			err := http.ListenAndServe(fmt.Sprintf("localhost:%d", profileDiagnostics.port), nil)
+			if err != nil {
+				panic(err)
+			}
 		}()
+	}
 
-		f, err := os.Create("trace.out")
+	if err := executeServer(*configFile, *homePath, *pidFile, *packaging, traceDiagnostics); err != nil {
+		code := 1
+		var ewc exitWithCode
+		if errors.As(err, &ewc) {
+			code = ewc.code
+		}
+		if code != 0 {
+			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+		}
+
+		os.Exit(code)
+	}
+}
+
+func executeServer(configFile, homePath, pidFile, packaging string, traceDiagnostics *tracingDiagnostics) error {
+	defer func() {
+		if err := log.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to close log: %s\n", err)
+		}
+	}()
+
+	if traceDiagnostics.enabled {
+		fmt.Println("diagnostics: tracing enabled", "file", traceDiagnostics.file)
+		f, err := os.Create(traceDiagnostics.file)
 		if err != nil {
 			panic(err)
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Error("Failed to write trace diagnostics", "path", traceDiagnostics.file, "err", err)
+			}
+		}()
 
-		err = trace.Start(f)
-		if err != nil {
+		if err := trace.Start(f); err != nil {
 			panic(err)
 		}
 		defer trace.Stop()
 	}
 
-	buildstampInt64, _ := strconv.ParseInt(buildstamp, 10, 64)
-	if buildstampInt64 == 0 {
+	buildstampInt64, err := strconv.ParseInt(buildstamp, 10, 64)
+	if err != nil || buildstampInt64 == 0 {
 		buildstampInt64 = time.Now().Unix()
 	}
 
 	setting.BuildVersion = version
 	setting.BuildCommit = commit
 	setting.BuildStamp = buildstampInt64
+	setting.BuildBranch = buildBranch
+	setting.IsEnterprise = extensions.IsEnterprise
+	setting.Packaging = validPackaging(packaging)
 
-	metrics.M_Grafana_Version.WithLabelValues(version).Set(1)
-	shutdownCompleted := make(chan int)
-	server := NewGrafanaServer()
+	metrics.SetBuildInformation(version, commit, buildBranch)
 
-	go listenToSystemSignals(server, shutdownCompleted)
+	s, err := server.New(server.Config{
+		ConfigFile: configFile, HomePath: homePath, PidFile: pidFile,
+		Version: version, Commit: commit, BuildBranch: buildBranch,
+	})
+	if err != nil {
+		return err
+	}
 
-	go func() {
-		code := 0
-		if err := server.Start(); err != nil {
-			log.Error2("Startup failed", "error", err)
-			code = 1
+	go listenToSystemSignals(s)
+
+	if err := s.Run(); err != nil {
+		code := s.ExitCode(err)
+		return exitWithCode{
+			reason: err.Error(),
+			code:   code,
 		}
+	}
 
-		exitChan <- code
-	}()
-
-	code := <-shutdownCompleted
-	log.Info2("Grafana shutdown completed.", "code", code)
-	log.Close()
-	os.Exit(code)
+	return nil
 }
 
-func listenToSystemSignals(server *GrafanaServerImpl, shutdownCompleted chan int) {
+func validPackaging(packaging string) string {
+	validTypes := []string{"dev", "deb", "rpm", "docker", "brew", "hosted", "unknown"}
+	for _, vt := range validTypes {
+		if packaging == vt {
+			return packaging
+		}
+	}
+	return "unknown"
+}
+
+func listenToSystemSignals(s *server.Server) {
 	signalChan := make(chan os.Signal, 1)
-	ignoreChan := make(chan os.Signal, 1)
-	code := 0
+	sighupChan := make(chan os.Signal, 1)
 
-	signal.Notify(ignoreChan, syscall.SIGHUP)
-	signal.Notify(signalChan, os.Interrupt, os.Kill, syscall.SIGTERM)
+	signal.Notify(sighupChan, syscall.SIGHUP)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
-	select {
-	case sig := <-signalChan:
-		trace.Stop() // Stops trace if profiling has been enabled
-		server.Shutdown(0, fmt.Sprintf("system signal: %s", sig))
-		shutdownCompleted <- 0
-	case code = <-exitChan:
-		trace.Stop() // Stops trace if profiling has been enabled
-		server.Shutdown(code, "startup error")
-		shutdownCompleted <- code
+	for {
+		select {
+		case <-sighupChan:
+			if err := log.Reload(); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to reload loggers: %s\n", err)
+			}
+		case sig := <-signalChan:
+			s.Shutdown(fmt.Sprintf("System signal: %s", sig))
+		}
 	}
 }

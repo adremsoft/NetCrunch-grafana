@@ -1,97 +1,138 @@
+// Libaries
+import flattenDeep from 'lodash/flattenDeep';
+import cloneDeep from 'lodash/cloneDeep';
+// Components
 import './editor_ctrl';
-
-import angular from 'angular';
-import _ from 'lodash';
 import coreModule from 'app/core/core_module';
-import { makeRegions, dedupAnnotations } from './events_processing';
+// Utils & Services
+import { dedupAnnotations } from './events_processing';
+// Types
+import { DashboardModel } from '../dashboard/state';
+import {
+  AnnotationEvent,
+  AppEvents,
+  CoreApp,
+  DataQueryRequest,
+  DataSourceApi,
+  rangeUtil,
+  ScopedVars,
+} from '@grafana/data';
+import { getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
+import { appEvents } from 'app/core/core';
+import { getTimeSrv } from '../dashboard/services/TimeSrv';
+import { Observable, of } from 'rxjs';
+import { map, mergeMap } from 'rxjs/operators';
+import { AnnotationQueryOptions, AnnotationQueryResponse } from './types';
+import { standardAnnotationSupport } from './standardAnnotationSupport';
+import { runRequest } from '../query/state/runRequest';
+import { RefreshEvent } from 'app/types/events';
+
+let counter = 100;
+function getNextRequestId() {
+  return 'AQ' + counter++;
+}
 
 export class AnnotationsSrv {
   globalAnnotationsPromise: any;
   alertStatesPromise: any;
+  datasourcePromises: any;
 
-  /** @ngInject */
-  constructor(private $rootScope, private $q, private datasourceSrv, private backendSrv, private timeSrv) {
-    $rootScope.onAppEvent('refresh', this.clearCache.bind(this), $rootScope);
-    $rootScope.onAppEvent('dashboard-initialized', this.clearCache.bind(this), $rootScope);
+  init(dashboard: DashboardModel) {
+    // always clearPromiseCaches when loading new dashboard
+    this.clearPromiseCaches();
+    // clear promises on refresh events
+    dashboard.events.subscribe(RefreshEvent, this.clearPromiseCaches.bind(this));
   }
 
-  clearCache() {
+  clearPromiseCaches() {
     this.globalAnnotationsPromise = null;
     this.alertStatesPromise = null;
+    this.datasourcePromises = null;
   }
 
-  getAnnotations(options) {
-    return this.$q
-      .all([this.getGlobalAnnotations(options), this.getAlertStates(options)])
-      .then(results => {
+  getAnnotations(options: AnnotationQueryOptions) {
+    return Promise.all([this.getGlobalAnnotations(options), this.getAlertStates(options)])
+      .then((results) => {
         // combine the annotations and flatten results
-        var annotations = _.flattenDeep(results[0]);
+        let annotations: AnnotationEvent[] = flattenDeep(results[0]);
+        // when in edit mode we need to use this function to get the saved id
+        let panelFilterId = options.panel.getSavedId();
 
         // filter out annotations that do not belong to requesting panel
-        annotations = _.filter(annotations, item => {
+        annotations = annotations.filter((item) => {
           // if event has panel id and query is of type dashboard then panel and requesting panel id must match
           if (item.panelId && item.source.type === 'dashboard') {
-            return item.panelId === options.panel.id;
+            return item.panelId === panelFilterId;
           }
           return true;
         });
 
         annotations = dedupAnnotations(annotations);
-        annotations = makeRegions(annotations, options);
 
         // look for alert state for this panel
-        var alertState = _.find(results[1], { panelId: options.panel.id });
+        const alertState: any = results[1].find((res: any) => res.panelId === panelFilterId);
 
         return {
           annotations: annotations,
           alertState: alertState,
         };
       })
-      .catch(err => {
+      .catch((err) => {
+        if (err.cancelled) {
+          return [];
+        }
+
         if (!err.message && err.data && err.data.message) {
           err.message = err.data.message;
         }
-        console.log('AnnotationSrv.query error', err);
-        this.$rootScope.appEvent('alert-error', ['Annotation Query Failed', err.message || err]);
+
+        console.error('AnnotationSrv.query error', err);
+        appEvents.emit(AppEvents.alertError, ['Annotation Query Failed', err.message || err]);
         return [];
       });
   }
 
-  getAlertStates(options) {
+  getAlertStates(options: any) {
     if (!options.dashboard.id) {
-      return this.$q.when([]);
+      return Promise.resolve([]);
     }
 
     // ignore if no alerts
     if (options.panel && !options.panel.alert) {
-      return this.$q.when([]);
+      return Promise.resolve([]);
     }
 
     if (options.range.raw.to !== 'now') {
-      return this.$q.when([]);
+      return Promise.resolve([]);
     }
 
     if (this.alertStatesPromise) {
       return this.alertStatesPromise;
     }
 
-    this.alertStatesPromise = this.backendSrv.get('/api/alerts/states-for-dashboard', {
-      dashboardId: options.dashboard.id,
-    });
+    this.alertStatesPromise = getBackendSrv().get(
+      '/api/alerts/states-for-dashboard',
+      {
+        dashboardId: options.dashboard.id,
+      },
+      `get-alert-states-${options.dashboard.id}`
+    );
+
     return this.alertStatesPromise;
   }
 
-  getGlobalAnnotations(options) {
-    var dashboard = options.dashboard;
+  getGlobalAnnotations(options: AnnotationQueryOptions) {
+    const dashboard = options.dashboard;
 
     if (this.globalAnnotationsPromise) {
       return this.globalAnnotationsPromise;
     }
 
-    var range = this.timeSrv.timeRange();
-    var promises = [];
+    const range = getTimeSrv().timeRange();
+    const promises = [];
+    const dsPromises = [];
 
-    for (let annotation of dashboard.annotations.list) {
+    for (const annotation of dashboard.annotations.list) {
       if (!annotation.enable) {
         continue;
       }
@@ -99,67 +140,138 @@ export class AnnotationsSrv {
       if (annotation.snapshotData) {
         return this.translateQueryResult(annotation, annotation.snapshotData);
       }
-
+      const datasourcePromise = getDataSourceSrv().get(annotation.datasource);
+      dsPromises.push(datasourcePromise);
       promises.push(
-        this.datasourceSrv
-          .get(annotation.datasource)
-          .then(datasource => {
-            // issue query against data source
-            return datasource.annotationQuery({
-              range: range,
-              rangeRaw: range.raw,
-              annotation: annotation,
-              dashboard: dashboard,
-            });
+        datasourcePromise
+          .then((datasource: DataSourceApi) => {
+            // Use the legacy annotationQuery unless annotation support is explicitly defined
+            if (datasource.annotationQuery && !datasource.annotations) {
+              return datasource.annotationQuery({
+                range,
+                rangeRaw: range.raw,
+                annotation: annotation,
+                dashboard: dashboard,
+              });
+            }
+            // Note: future annotatoin lifecycle will use observables directly
+            return executeAnnotationQuery(options, datasource, annotation)
+              .toPromise()
+              .then((res) => {
+                return res.events ?? [];
+              });
           })
-          .then(results => {
+          .then((results) => {
             // store response in annotation object if this is a snapshot call
             if (dashboard.snapshot) {
-              annotation.snapshotData = angular.copy(results);
+              annotation.snapshotData = cloneDeep(results);
             }
             // translate result
             return this.translateQueryResult(annotation, results);
           })
       );
     }
-
-    this.globalAnnotationsPromise = this.$q.all(promises);
+    this.datasourcePromises = Promise.all(dsPromises);
+    this.globalAnnotationsPromise = Promise.all(promises);
     return this.globalAnnotationsPromise;
   }
 
-  saveAnnotationEvent(annotation) {
+  saveAnnotationEvent(annotation: AnnotationEvent) {
     this.globalAnnotationsPromise = null;
-    return this.backendSrv.post('/api/annotations', annotation);
+    return getBackendSrv().post('/api/annotations', annotation);
   }
 
-  updateAnnotationEvent(annotation) {
+  updateAnnotationEvent(annotation: AnnotationEvent) {
     this.globalAnnotationsPromise = null;
-    return this.backendSrv.put(`/api/annotations/${annotation.id}`, annotation);
+    return getBackendSrv().put(`/api/annotations/${annotation.id}`, annotation);
   }
 
-  deleteAnnotationEvent(annotation) {
+  deleteAnnotationEvent(annotation: AnnotationEvent) {
     this.globalAnnotationsPromise = null;
-    let deleteUrl = `/api/annotations/${annotation.id}`;
-    if (annotation.isRegion) {
-      deleteUrl = `/api/annotations/region/${annotation.regionId}`;
-    }
+    const deleteUrl = `/api/annotations/${annotation.id}`;
 
-    return this.backendSrv.delete(deleteUrl);
+    return getBackendSrv().delete(deleteUrl);
   }
 
-  translateQueryResult(annotation, results) {
+  translateQueryResult(annotation: any, results: any) {
     // if annotation has snapshotData
     // make clone and remove it
     if (annotation.snapshotData) {
-      annotation = angular.copy(annotation);
+      annotation = cloneDeep(annotation);
       delete annotation.snapshotData;
     }
 
-    for (var item of results) {
+    for (const item of results) {
       item.source = annotation;
+      item.color = annotation.iconColor;
+      item.type = annotation.name;
+      item.isRegion = item.timeEnd && item.time !== item.timeEnd;
     }
+
     return results;
   }
+}
+
+export function executeAnnotationQuery(
+  options: AnnotationQueryOptions,
+  datasource: DataSourceApi,
+  savedJsonAnno: any
+): Observable<AnnotationQueryResponse> {
+  const processor = {
+    ...standardAnnotationSupport,
+    ...datasource.annotations,
+  };
+
+  const annotation = processor.prepareAnnotation!(savedJsonAnno);
+  if (!annotation) {
+    return of({});
+  }
+
+  const query = processor.prepareQuery!(annotation);
+  if (!query) {
+    return of({});
+  }
+
+  // No more points than pixels
+  const maxDataPoints = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+
+  // Add interval to annotation queries
+  const interval = rangeUtil.calculateInterval(options.range, maxDataPoints, datasource.interval);
+
+  const scopedVars: ScopedVars = {
+    __interval: { text: interval.interval, value: interval.interval },
+    __interval_ms: { text: interval.intervalMs.toString(), value: interval.intervalMs },
+    __annotation: { text: annotation.name, value: annotation },
+  };
+
+  const queryRequest: DataQueryRequest = {
+    startTime: Date.now(),
+    requestId: getNextRequestId(),
+    range: options.range,
+    maxDataPoints,
+    scopedVars,
+    ...interval,
+    app: CoreApp.Dashboard,
+
+    timezone: options.dashboard.timezone,
+
+    targets: [
+      {
+        ...query,
+        refId: 'Anno',
+      },
+    ],
+  };
+
+  return runRequest(datasource, queryRequest).pipe(
+    mergeMap((panelData) => {
+      if (!panelData.series) {
+        return of({ panelData, events: [] });
+      }
+
+      return processor.processEvents!(annotation, panelData.series).pipe(map((events) => ({ panelData, events })));
+    })
+  );
 }
 
 coreModule.service('annotationsSrv', AnnotationsSrv);
