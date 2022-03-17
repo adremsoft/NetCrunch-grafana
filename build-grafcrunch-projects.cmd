@@ -7,8 +7,9 @@ call :CheckError "COMPILE GRAFCRUNCH SERVER"
 
 echo BUILDING GrafCrunch Client
 rem call grunt release
-yarn install
-yarn build
+call yarn install
+call :CheckError "GRAFCRUNCH CLIENT"
+call yarn build
 call :CheckError "GRAFCRUNCH CLIENT"
 
 goto EndOfScript
