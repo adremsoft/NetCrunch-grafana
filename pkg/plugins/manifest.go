@@ -101,6 +101,15 @@ func getPluginSignatureState(log log.Logger, plugin *PluginBase) (PluginSignatur
 	log.Debug("Getting signature state of plugin", "plugin", plugin.Id, "isBackend", plugin.Backend)
 	manifestPath := filepath.Join(plugin.PluginDir, "MANIFEST.txt")
 
+	if plugin.Id == "adremsoft-netcrunch-app" || plugin.Id == "adremsoft-netcrunch-datasource" {
+		log.Debug("Adremsoft Plugin", "id", plugin.Id)
+		return PluginSignatureState{
+			Status:     pluginSignatureValid,
+			Type:       privateType,
+			SigningOrg: "adremsoft",
+		}, nil
+	}
+
 	// nolint:gosec
 	// We can ignore the gosec G304 warning on this one because `manifestPath` is based
 	// on plugin the folder structure on disk and not user input.
