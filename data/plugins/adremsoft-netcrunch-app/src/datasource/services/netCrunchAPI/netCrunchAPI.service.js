@@ -13,6 +13,7 @@ import { servicesModule } from '../../common';
 import './adrem/module';
 import { NetCrunchConnectionCache } from './connectionCache';
 import { NetCrunchConnection, CONNECTION_CONSTS, NETCRUNCH_TREND_DATA_CONST } from './netCrunchConnection/connection';
+import { AppEvents } from '@grafana/data';
 
 const
   CONNECTION_ERROR_MESSAGES = CONNECTION_CONSTS.ERROR_MESSAGES,
@@ -80,7 +81,7 @@ class NetCrunchAPIService {
     function addConnectionHandlers(datasource, connection) {
 
       connection.onError = (error) => {
-        self.alertSrv.set(error.connectionName, error.message, 'error');
+        self.$rootScope.appEvent(AppEvents.alertError, [error.connectionName + ': ' + error.message]);
       };
 
       connection.onNodesChanged = () => {
