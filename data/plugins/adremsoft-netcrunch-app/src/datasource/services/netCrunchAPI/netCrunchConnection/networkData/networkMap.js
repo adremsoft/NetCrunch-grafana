@@ -30,19 +30,16 @@ class NetCrunchNetworkMap {
     }
 
     function decodeNetworkMapData(local, values) {
-
       local.netId = values.NetIntId || '';
-
-      local.parentId = (values.NetworkData != null) ? parseInt(values.NetworkData[0], 10) : '';
+      local.parentId = (values.ParentId === -1) ? '' : parseInt(values.ParentId, 10);
       if (isNaN(local.parentId)) {
         local.parentId = '';
       }
 
-      local.isFolder = ((values.MapClassTag === 'dynfolder') ||
-                        ((values.NetworkData != null) && Array.isArray(values.NetworkData[1])));
+      local.isFolder = (values.MapClassTag === 'dynfolder' || Array.isArray(values.Children));
 
       if (local.isFolder) {
-        const mapsData = (values.NetworkData != null) ? values.NetworkData[1] : [];
+        const mapsData = (values.Children != null) ? values.Children : [];
 
         if (Array.isArray(mapsData)) {                        // otherwise it can be empty object instead of empty array
           local.maps = mapsData.map(id => parseInt(id, 10));

@@ -25,7 +25,7 @@ const
     ERROR_MESSAGES: [
       '',
       'Server connection failed',
-      'NetCrunch server version should be 10.0 or greater',
+      'NetCrunch server version should be 12.0 or greater',
       'Server connection initialization failed',
       'Authentication failed'
     ]

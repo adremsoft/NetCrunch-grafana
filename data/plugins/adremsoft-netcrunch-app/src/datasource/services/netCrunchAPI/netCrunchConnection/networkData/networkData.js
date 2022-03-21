@@ -75,7 +75,7 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
 
         PERFORMANCE_VIEWS_NET_INT_ID = 2,
         HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName',
-        NETWORKS_QUERY = 'Select NetIntId, DisplayName, HostMapData, IconId, MapClassTag ' +
+        NETWORKS_QUERY = 'Select NetIntId, DisplayName, HostMapData, IconId, MapClassTag, ParentId, Children ' +
                          'where (MapClassTag != \'pnet\') && (MapClassTag != \'dependencynet\') && ' +
                                '(MapClassTag != \'issuesnet\') && (MapClassTag != \'all\') && ' +
                                '(NetIntId != ' + PERFORMANCE_VIEWS_NET_INT_ID + ')',
