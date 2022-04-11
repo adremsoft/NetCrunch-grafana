@@ -8,7 +8,7 @@ export interface BrandComponentProps {
 }
 
 const LoginLogo: FC<BrandComponentProps> = ({ className }) => {
-  return <img className={className} src="public/img/logo_transparent_200x75.png" alt="GrafCrunch" />;
+  return <img className={className} src="public/img/logo_transparent_200x75.svg" alt="GrafCrunch" width="200" height="75"/>;
 };
 
 const LoginBackground: FC<BrandComponentProps> = ({ className, children }) => {
@@ -22,7 +22,7 @@ const LoginBackground: FC<BrandComponentProps> = ({ className, children }) => {
 };
 
 const MenuLogo: FC<BrandComponentProps> = ({ className }) => {
-  return <img className={className} src="public/img/fav32.png" alt="GrafCrunch" />;
+  return <img className={className} src="public/img/fav32.svg" alt="GrafCrunch" />;
 };
 
 const LoginBoxBackground = () => {
