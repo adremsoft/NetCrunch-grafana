@@ -14,7 +14,7 @@ export let getFooterLinks = (): FooterLink[] => {
     {
       text: 'Documentation',
       icon: 'document-info',
-      url: 'https://www.adremsoft.com/blog/view/blog/5338024126755/getting-started-with-grafcrunch',
+      url: 'https://www.adremsoft.com/blog/view/blog/25118851213603',
       target: '_blank',
     },
     {
