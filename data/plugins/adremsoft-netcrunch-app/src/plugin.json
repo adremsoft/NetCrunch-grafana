@@ -11,8 +11,8 @@
     },
     "keywords": ["netcrunch", "adrem"],
     "logos": {
-      "small": "images/small-logo.png",
-      "large": "images/large-logo.png"
+      "small": "images/nc-logo-gc.svg",
+      "large": "images/nc-logo-gc.svg"
     },
     "links": [
       {"name": "AdRem Software", "url": "https://www.adremsoft.com"},
