@@ -8,8 +8,6 @@
 
 /* global Worker, Blob, URL */
 
-let webWorker;
-
 class AdremWebWorker {
 
   constructor(workerUrl) {
@@ -44,7 +42,6 @@ class AdremWebWorker {
         webWorker.postMessage(data);
       });
     };
-
   }
 
   addTask(taskSpec) {
@@ -81,9 +78,8 @@ class AdremWebWorker {
       taskInterfaces = [];
 
     function getCodeBlob() {
-
       function getAdremTaskDispatcher() {
-        const globalScope = webWorker;
+        const globalScope = this;
 
         function postResult(taskId, result) {
           globalScope.postMessage({
@@ -137,12 +133,12 @@ class AdremWebWorker {
       return URL.createObjectURL(getCodeBlob());
     }
 
-    function addFunctionCode(name, code, createInterface = false, async = false) {
+    function addFunctionCode(code, createInterface = false, async = false) {
       if (typeof code === 'function') {
         workerCode.push(code.toString());
         if ((createInterface === true) && (code.name != null) && (code.name !== '')) {
           taskInterfaces.push({
-            name,
+            name : code.name,
             async
           });
         }
@@ -152,7 +148,7 @@ class AdremWebWorker {
     }
 
     function getWebWorker() {
-      webWorker = new AdremWebWorker(getBlobURL());
+      const webWorker = new AdremWebWorker(getBlobURL());
       taskInterfaces.forEach((taskSpec) => {
         webWorker.addTask(taskSpec);
       });
