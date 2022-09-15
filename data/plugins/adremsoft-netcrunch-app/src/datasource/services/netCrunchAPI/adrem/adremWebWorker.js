@@ -8,6 +8,8 @@
 
 /* global Worker, Blob, URL */
 
+let webWorker;
+
 class AdremWebWorker {
 
   constructor(workerUrl) {
@@ -81,7 +83,7 @@ class AdremWebWorker {
     function getCodeBlob() {
 
       function getAdremTaskDispatcher() {
-        const globalScope = this;
+        const globalScope = webWorker;
 
         function postResult(taskId, result) {
           globalScope.postMessage({
@@ -150,7 +152,7 @@ class AdremWebWorker {
     }
 
     function getWebWorker() {
-      const webWorker = new AdremWebWorker(getBlobURL());
+      webWorker = new AdremWebWorker(getBlobURL());
       taskInterfaces.forEach((taskSpec) => {
         webWorker.addTask(taskSpec);
       });
