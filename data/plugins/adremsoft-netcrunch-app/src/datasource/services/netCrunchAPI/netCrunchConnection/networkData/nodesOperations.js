@@ -63,7 +63,7 @@ function sortNodesByNameAndAddress(nodes) {
 function getWebWorker() {
   if (webWorkerSingleton == null) {
     const workerBuilder = AdremWebWorker.webWorkerBuilder();
-    workerBuilder.addFunctionCode('sortNodesByNameAndAddress', sortNodesByNameAndAddress, true);
+    workerBuilder.addFunctionCode(sortNodesByNameAndAddress, true);
     webWorkerSingleton = workerBuilder.getWebWorker();
   }
   return webWorkerSingleton;
@@ -88,7 +88,9 @@ class NetCrunchNodesOperations {
           });
         });
 
-        getWebWorker().sortNodesByNameAndAddress(nodesRemoteBuffer)
+        const worker = getWebWorker();
+        // call whatever name made WebPack for it
+        worker[sortNodesByNameAndAddress.name](nodesRemoteBuffer)
           .then((sortedNodes) => {
             const result = [];
             sortedNodes.forEach(node => result.push(nodes[node.index]));
