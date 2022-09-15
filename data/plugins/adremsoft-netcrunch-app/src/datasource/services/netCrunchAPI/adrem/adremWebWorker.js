@@ -135,12 +135,12 @@ class AdremWebWorker {
       return URL.createObjectURL(getCodeBlob());
     }
 
-    function addFunctionCode(code, createInterface = false, async = false) {
+    function addFunctionCode(name, code, createInterface = false, async = false) {
       if (typeof code === 'function') {
         workerCode.push(code.toString());
         if ((createInterface === true) && (code.name != null) && (code.name !== '')) {
           taskInterfaces.push({
-            name: code.name,
+            name,
             async
           });
         }

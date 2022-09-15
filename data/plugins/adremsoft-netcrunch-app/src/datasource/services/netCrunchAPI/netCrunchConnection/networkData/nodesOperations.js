@@ -63,7 +63,7 @@ function sortNodesByNameAndAddress(nodes) {
 function getWebWorker() {
   if (webWorkerSingleton == null) {
     const workerBuilder = AdremWebWorker.webWorkerBuilder();
-    workerBuilder.addFunctionCode(sortNodesByNameAndAddress, true);
+    workerBuilder.addFunctionCode('sortNodesByNameAndAddress', sortNodesByNameAndAddress, true);
     webWorkerSingleton = workerBuilder.getWebWorker();
   }
   return webWorkerSingleton;
@@ -105,6 +105,5 @@ class NetCrunchNodesOperations {
 }
 
 export {
-  NetCrunchNodesOperations,
-  sortNodesByNameAndAddress
+  NetCrunchNodesOperations
 };
