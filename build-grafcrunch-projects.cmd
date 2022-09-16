@@ -8,6 +8,7 @@ call :CheckError "COMPILE GRAFCRUNCH SERVER"
 echo BUILDING GrafCrunch Client
 rem call grunt release
 call yarn install
+call npx --yes browserslist@latest --update-db
 call :CheckError "GRAFCRUNCH CLIENT"
 call yarn build
 call :CheckError "GRAFCRUNCH CLIENT"
