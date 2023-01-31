@@ -23,7 +23,7 @@ class NetCrunchDatasourceConfigCtrl {
   }
 
   get protocol() {
-    return (this.isSSL === true) ? 'https://' : 'http://';
+    return (this.isSSL === true) ? 'http://' : 'https://';
   }
 
   updateURL() {
