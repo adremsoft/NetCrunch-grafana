@@ -36,7 +36,7 @@ class NetCrunchNetworkMap {
         local.parentId = '';
       }
 
-      local.isFolder = (values.MapClassTag === 'dynfolder' || Array.isArray(values.Children));
+      local.isFolder = (values.MapClassTag === 'dynfolder' || (Array.isArray(values.Children) && values.Children.length > 0));
 
       if (local.isFolder) {
         const mapsData = (values.Children != null) ? values.Children : [];
