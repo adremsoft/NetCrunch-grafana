@@ -113,22 +113,9 @@ class NetCrunchAPIService {
     if (!this.cache.connectionExist(datasource)) {
       let connection = new NetCrunchConnection(this.adrem, datasource.url, datasource.name);
 
-      return getServerApi(connection)
-        .then(serverApi =>
-          new Promise((resolve, reject) => {
-            const checkStatus = NetCrunchConnection.checkApiVersion(serverApi);
-            if (checkStatus.status === 0) {
-              resolve(checkStatus.version);
-            } else {
-              reject(checkStatus.status);
-            }
-          })
-        )
-        .then(() => {
-          connection = addConnectionHandlers(datasource, connection);
-          self.cache.addConnection(datasource, createSession(datasource, connection));
-          return self.cache.getConnection(datasource);
-        });
+      connection = addConnectionHandlers(datasource, connection);
+      self.cache.addConnection(datasource, createSession(datasource, connection));
+      return self.cache.getConnection(datasource);
     }
     return getConnectionFromCache(datasource);
   }
