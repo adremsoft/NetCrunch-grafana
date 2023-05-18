@@ -19,13 +19,8 @@ class NetCrunchNetworkMap {
     /* eslint-disable no-param-reassign */
 
     function addNodesToNetworkMap(local, values) {
-      if (values.HostMapData != null) {
-        for (let i = 1, len = values.HostMapData[0]; i <= len; i += 1) {
-          const nodeData = values.HostMapData[i];
-          if ((nodeData[0] === 0) || (nodeData[0] === 5)) {
-            local.nodesId.push(parseInt(nodeData[1], 10));
-          }
-        }
+      if (values.Nodes != null) {
+        local.nodesId = values.Nodes;
       }
     }
 
