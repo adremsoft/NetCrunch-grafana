@@ -74,18 +74,17 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
         self = this,
 
         PERFORMANCE_VIEWS_NET_INT_ID = 2,
-        HOSTS_QUERY = 'Select Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName',
-        NETWORKS_QUERY = 'Select NetIntId, DisplayName, Nodes, IconId, MapClassTag, ParentId, Children ' +
-                         'where (MapClassTag != \'pnet\') && (MapClassTag != \'dependencynet\') && ' +
-                               '(MapClassTag != \'issuesnet\') && (MapClassTag != \'all\') && ' +
-                               '(NetIntId != ' + PERFORMANCE_VIEWS_NET_INT_ID + ')',
-        SENSORS_QUERY = "Select NodeId, Name, Status, UId, Alerts, CfgGroup " +
-                        "where CfgGroup = 'sensors' || CfgGroup = 'cloud'";
+        HOSTS_QUERY = 'SELECT Id, Name, Address, DeviceType, GlobalDataNode, CustomDisplayName',
+        NETWORKS_QUERY = `SELECT NetIntId, DisplayName, Nodes, IconId, MapClassTag, ParentId, Children 
+                                 WHERE (MapClassTag != 'pnet') && (MapClassTag != 'dependencynet') &&
+                                       (MapClassTag != 'issuesnet') && (MapClassTag != 'all') &&
+                                       (NetIntId != ${PERFORMANCE_VIEWS_NET_INT_ID})`,
+        SENSORS_QUERY = `SELECT NodeId, Name, Status, UId, Alerts, CfgGroup WHERE CfgGroup = 'sensors' || CfgGroup = 'cloud'`;
 
       let
         hostsData,
         networkData,
-        sensorsData,
+        sensorData,
         hostsResolved = false;
 
       function hostsChanged() {
@@ -122,9 +121,9 @@ function NetCrunchNetworkData(adremClient, netCrunchConnection) {
       networkData = openRemoteData('Networks', NETWORKS_QUERY, processMapData, networksChanged);
 
       // eslint-disable-next-line
-      sensorsData = openRemoteData('SensorStatus', SENSORS_QUERY, processSensorData, sensorsChanged);
+      sensorData = openRemoteData('SensorStatus', SENSORS_QUERY, processSensorData, sensorsChanged);
 
-      remoteDataInitialized = Promise.all([hostsData, networkData, sensorsData]);
+      remoteDataInitialized = Promise.all([hostsData, networkData, sensorData]);
 
       return remoteDataInitialized;
     }
