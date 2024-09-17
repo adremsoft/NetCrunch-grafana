@@ -70,7 +70,7 @@ implementation
 
 uses System.SysUtils, System.Classes, WinApi.Windows, Winapi.WinSock, WinApi.IpHlpApi, WinApi.IpRtrMib, Winapi.WinSvc,
      uNCAuthorityConsts, uNCSharedConsts, uUserProfilesManagerIntf, uNcMonitorConfigClient, uNcMonitorIntf,
-     uWAOptionsEditor, uClientServerBase, uProcessUtils, uRemoteService;
+     uGlobalOptionsProviderIntf, uClientServerBase, uProcessUtils, uRemoteService;
 
 const
   MIN_NETCRUNCH_SERVER_VERSION = '9.0.0.0';
@@ -186,24 +186,20 @@ begin
 end;
 
 procedure TNetCrunchServerConnection.GetWebAppServerConfig (out Port : Integer; out SSL : Boolean);
-var
-  WAOptionsEditor : TWAOptionsEditor;
 begin
   Port := 0;
   SSL := False;
-
-  WAOptionsEditor := TWAOptionsEditor.Create;
   try
-    NcMonitorConfigProvider := Create_NcMonitorConfigProvider(FNetCrunchClient);
-    try
-      WAOptionsEditor.Load;
-      Port := WAOptionsEditor.Port;
-      SSL := WAOptionsEditor.UseSSL;
-    finally
-      NcMonitorConfigProvider := NIL;
-    end;
-  finally
-    WAOptionsEditor.Free;
+    var Client: IGlobalOptions := NetCrunchClient.Singletons.Get<IGlobalOptions>;
+    var Options := Client.GetOption('WebAccess');
+    SSL := Options.Prop['UseSSL'].AsInteger = -1;
+    if SSL then
+      Port := Options.Prop['HttpsPort'].AsInteger
+    else
+      Port := Options.Prop['HttpPort'].AsInteger;
+  except
+    on E: Exception do
+      OutputDebugString(PChar(E.Message));
   end;
 end;
 
