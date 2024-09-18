@@ -73,6 +73,8 @@ class NetCrunchAPIService {
           })
           .catch((error) => {
             error.isHandled = true;
+            console.error(error);
+            self.$rootScope.appEvent(AppEvents.alertError, [error.message]);
             reject(CONNECTION_CONSTS.ERROR_SERVER_API);
           });
       });
@@ -81,6 +83,7 @@ class NetCrunchAPIService {
     function addConnectionHandlers(datasource, connection) {
 
       connection.onError = (error) => {
+        console.error(error);
         self.$rootScope.appEvent(AppEvents.alertError, [error.connectionName + ': ' + error.message]);
       };
 
@@ -105,6 +108,8 @@ class NetCrunchAPIService {
           .catch((error) => {
             self.cache.deleteConnection(datasource);
             connection.logout();
+            console.error(error);
+            self.$rootScope.appEvent(AppEvents.alertError, [error.message]);
             reject(error);
           });
       });

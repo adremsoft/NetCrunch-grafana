@@ -123,21 +123,13 @@ class NetCrunchConnection {
       }
     }
 
-    function getUserProfileData() {
-      return new Promise(resolve =>
-        self.serverConnection.ncSrv.ICurrentUserProfile.GetProfileData(userProfile =>
-          resolve(userProfile)));
-    }
-
     if (this.serverConnection == null) {
       this.serverConnectionReady = this.establishConnection();
     }
 
     return this.serverConnectionReady.then(() =>
       this.authenticateUser(userName, password)
-        .then(() => getUserProfileData())
-        .then((userProfile) => {
-          this.userProfile = userProfile;
+        .then(() => {
           this.networkAtlas = new NetCrunchNetworkData(this.adremClient, this);
           this.networkAtlas.onNodesChanged = nodesChanged.bind(this);
           this.networkAtlas.onNetworksChanged = networksChanged.bind(this);
